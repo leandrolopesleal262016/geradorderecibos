@@ -382,7 +382,8 @@
 
             // Gerar recibos
             $('#gerarRecibos').click(function() {
-                const modeloSelecionado = $('input[name="modeloRecibo"]:checked').val();
+                const modeloId = $('input[name="modeloRecibo"]:checked').val();
+                const modeloSalvo = JSON.parse(localStorage.getItem('modelosRecibo'))[modeloId];
                 const empresasSelecionadas = $('#empresas').val() || [];
                 const pessoasSelecionadas = $('#pessoas').val() || [];
                 const todosSelecionados = [...empresasSelecionadas, ...pessoasSelecionadas];
@@ -411,7 +412,8 @@
                         'Content-Type': 'application/json',
                     },
                     body: JSON.stringify({
-                        modelo: modeloSelecionado,
+                        modelo: modeloId,
+                        modeloConteudo: modeloSalvo.conteudo,
                         clientes: todosSelecionados,
                         valor: valor,
                         numero_documento: numero_documento,
