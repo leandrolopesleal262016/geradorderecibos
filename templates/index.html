@@ -235,40 +235,42 @@
 
 <script>
     $(document).ready(function() {
-        // Inicialização do Select2
+        // Inicialização básica do Select2
         $('.select2').select2({
             width: '100%',
             placeholder: 'Selecione os clientes',
-            allowClear: true,
-            theme: 'bootstrap4'
+            allowClear: true
         });
 
-        // Carregar clientes
+        // Carregamento dos clientes
         fetch('/get_clientes')
             .then(response => response.json())
             .then(data => {
                 const empresasSelect = $('#empresas');
                 const pessoasSelect = $('#pessoas');
                 
-                // Limpa os selects
+                // Limpa os selects antes de adicionar novos dados
                 empresasSelect.empty();
                 pessoasSelect.empty();
                 
-                // Adiciona as opções
+                // Adiciona as empresas
                 data.empresas.forEach(empresa => {
-                    const option = new Option(empresa, empresa, false, false);
-                    empresasSelect.append(option);
+                    empresasSelect.append(new Option(empresa, empresa));
                 });
                 
+                // Adiciona as pessoas físicas
                 data.pessoas.forEach(pessoa => {
-                    const option = new Option(pessoa, pessoa, false, false);
-                    pessoasSelect.append(option);
+                    pessoasSelect.append(new Option(pessoa, pessoa));
                 });
                 
-                // Atualiza o Select2
+                // Atualiza os selects
                 empresasSelect.trigger('change');
                 pessoasSelect.trigger('change');
+            })
+            .catch(error => {
+                console.log('Erro ao carregar clientes:', error);
             });
+    });
 
         let previewData = null;
         
@@ -277,22 +279,22 @@
             1: {
                 nome: "Modelo Emitente",
                 conteudo: `RECIBO Nº {numero_documento} - parcela única     VALOR: R$ {valor}
-ADMINISTRATIVO - {cliente_nome}
-Recebi(emos) a quantia de R$ {valor} ({valor_extenso}) na forma de pagamento Conciliação, correspondente a VALE ALIMENTAÇÃO (documento número {numero_documento} parcela única) e para maior clareza firmo(amos) o presente.`
-            },
-            2: {
-                nome: "Modelo Destinatário",
-                conteudo: `RECIBO Nº {numero_documento} - parcela única     VALOR: R$ {valor}
-{cliente_nome}
-Recebemos de BENCATO CONSTRUCOES LTDA a quantia de R$ {valor} ({valor_extenso}) na forma de pagamento Conciliação, correspondente a PARCELA ADM OBRA - CONFORME CONTRATO (documento número {numero_documento} parcela única) e para maior clareza firmo(amos) o presente.`
-            },
-            3: {
-                nome: "Modelo Personalizado",
-                conteudo: `RECIBO Nº {numero_documento}
-Valor: R$ {valor}
-Cliente: {cliente_nome}
-Texto personalizado aqui...`
-            }
+                ADMINISTRATIVO - {cliente_nome}
+                Recebi(emos) a quantia de R$ {valor} ({valor_extenso}) na forma de pagamento Conciliação, correspondente a VALE ALIMENTAÇÃO (documento número {numero_documento} parcela única) e para maior clareza firmo(amos) o presente.`
+                            },
+                            2: {
+                                nome: "Modelo Destinatário",
+                                conteudo: `RECIBO Nº {numero_documento} - parcela única     VALOR: R$ {valor}
+                {cliente_nome}
+                Recebemos de BENCATO CONSTRUCOES LTDA a quantia de R$ {valor} ({valor_extenso}) na forma de pagamento Conciliação, correspondente a PARCELA ADM OBRA - CONFORME CONTRATO (documento número {numero_documento} parcela única) e para maior clareza firmo(amos) o presente.`
+                            },
+                            3: {
+                                nome: "Modelo Personalizado",
+                                conteudo: `RECIBO Nº {numero_documento}
+                Valor: R$ {valor}
+                Cliente: {cliente_nome}
+                Texto personalizado aqui...`
+                            }
         };
 
         // Carregar modelos do localStorage, se existirem
@@ -376,8 +378,7 @@ Texto personalizado aqui...`
                 pessoasSelect.select2();
                 
                 console.log("Opções selecionadas:", todasOpcoes);
-            });
-    });
+            });   
 
             // Gerar recibos
             $('#gerarRecibos').click(function() {
@@ -459,7 +460,7 @@ Texto personalizado aqui...`
                     console.error('Erro:', error);
                     alert('Erro ao gerar recibos. Por favor, verifique os dados e tente novamente.');
                 });
-            });
+            });            
             // Editar recibo individual
             $(document).on('click', '.editar-recibo', function() {
                 const card = $(this).closest('.card');

@@ -183,132 +183,138 @@ def get_clientes():
         import traceback
         print(f"Traceback: {traceback.format_exc()}")
         return jsonify({'error': str(e)}), 500
-
 @app.route('/generate_receipts_bulk', methods=['POST'])
 def generate_receipts_bulk():
-            global documentos_gerados
-            try:
-                dados = request.json
-                modelo = dados.get('modelo')
-                clientes_selecionados = dados.get('clientes', [])
-                valor = dados.get('valor', '0.00')
-                numero_documento = dados.get('numero_documento', '')
-                data = dados.get('data', datetime.now().strftime('%d/%m/%Y'))
-        
-                documentos_gerados = []
-                preview_content = []
-        
-                for cliente_nome in clientes_selecionados:
-                    # Verifica se o cliente existe no DataFrame
-                    cliente_filtrado = fornecedores_df[fornecedores_df['Razão social'] == cliente_nome]
-            
-                    if cliente_filtrado.empty:
-                        print(f"Cliente não encontrado: {cliente_nome}")
-                        continue
-                
-                    cliente_data = cliente_filtrado.iloc[0].to_dict()
-            
-                    doc = Document()
-                    # Configuração das margens
-                    sections = doc.sections
-                    for section in sections:
-                        section.left_margin = Inches(1)
-                        section.right_margin = Inches(1)
-                    # Ajuste das colunas e formatação do texto
-                    header_table = doc.add_table(rows=1, cols=2)
-                    header_table.autofit = False
-                    header_table.columns[0].width = Inches(1.2)  # Coluna do logo 40% menor
-                    header_table.columns[1].width = Inches(5.8)  # Coluna do texto maior
+    global documentos_gerados
+    try:
+        dados = request.json
+        modelo_selecionado = dados.get('modelo', '1')  # Obtém o modelo selecionado
+        clientes_selecionados = dados.get('clientes', [])
+        valor = dados.get('valor', '0.00')
+        numero_documento = dados.get('numero_documento', '')
+        data = dados.get('data', datetime.now().strftime('%d/%m/%Y'))
 
-                    # Logo
-                    logo_cell = header_table.cell(0, 0)
-                    logo_paragraph = logo_cell.paragraphs[0]
-                    logo_run = logo_paragraph.add_run()
-                    logo_run.add_picture('static/images/logo.png', width=Inches(1.2))
+        documentos_gerados = []
+        preview_content = []
 
-                    # Texto da empresa em cinza
-                    info_cell = header_table.cell(0, 1)
-                    info_paragraph = info_cell.paragraphs[0]
-                    info_run = info_paragraph.add_run("BEIJO E MATOS CONSTRUÇÕES E ENGENHARIA LTDA\nJoaquim da Silva Martha, 12-53 - Sala 3 - Altos da Cidade - Bauru/SP\nguilhermebeijo@bencato.com.br - CNPJ: 26.149.105/0001-09 - www.bencato.com.br")
-                    info_run.font.color.rgb = RGBColor(128, 128, 128)  # Cor cinza
-                    info_run.font.size = Pt(11)
+        # Define os modelos de texto
+        modelos = {
+            '1': """RECIBO Nº {numero_documento} - parcela única     VALOR: R$ {valor}
+            ADMINISTRATIVO - {cliente_nome}
+            Recebi(emos) a quantia de R$ {valor} ({valor_extenso}) na forma de pagamento Conciliação, correspondente a VALE ALIMENTAÇÃO (documento número {numero_documento} parcela única) e para maior clareza firmo(amos) o presente.""",
 
-                    doc.add_paragraph()  # Espaço após o cabeçalho
+                        '2': """RECIBO Nº {numero_documento} - parcela única     VALOR: R$ {valor}
+            {cliente_nome}
+            Recebemos de BENCATO CONSTRUCOES LTDA a quantia de R$ {valor} ({valor_extenso}) na forma de pagamento Conciliação, correspondente a PARCELA ADM OBRA - CONFORME CONTRATO (documento número {numero_documento} parcela única) e para maior clareza firmo(amos) o presente.""",
 
-                    # Linha do recibo e valor
-                    recibo_table = doc.add_table(rows=1, cols=2)
-                    recibo_cell = recibo_table.cell(0, 0)
-                    recibo_run = recibo_cell.paragraphs[0].add_run(f"RECIBO Nº {str(numero_documento)} - parcela única")
-                    recibo_run.bold = True
+                        '3': """RECIBO Nº {numero_documento}
+            Valor: R$ {valor}
+            Cliente: {cliente_nome}
+            Texto personalizado aqui..."""
+                    }
 
-                    valor_cell = recibo_table.cell(0, 1)
-                    valor_paragraph = valor_cell.paragraphs[0]
-                    valor_paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-                    valor_run = valor_paragraph.add_run(f"VALOR: R$ {valor}")
-                    valor_run.bold = True
+        modelo_texto = modelos.get(modelo_selecionado, modelos['1'])
 
-                    doc.add_paragraph()  # Espaço após a linha do recibo
+        for cliente_nome in clientes_selecionados:
+            # Verifica se o cliente existe no DataFrame
+            cliente_filtrado = fornecedores_df[fornecedores_df['Razão social'] == cliente_nome]
 
-                    # Nome do cliente
-                    p = doc.add_paragraph()
-                    p.add_run(f"ADMINISTRATIVO - {cliente_nome}")
+            if cliente_filtrado.empty:
+                print(f"Cliente não encontrado: {cliente_nome}")
+                continue
 
-                    doc.add_paragraph()  # Espaço após o nome do cliente
-                    # Descrição do recibo
-                    p = doc.add_paragraph()
-                    p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-                    valor_extenso = valor_por_extenso(valor)  # Adiciona esta linha
-                    p.add_run(f"Recebi(emos) a quantia de R$ {valor} ({valor_extenso}) na forma de pagamento em dinheiro, correspondente a serviços prestados e para maior clareza firmo(amos) o presente.")
-                    doc.add_paragraph()  # Espaço antes da data
+            cliente_data = cliente_filtrado.iloc[0].to_dict()
 
-                    # Data em português
-                    data_atual = datetime.now()
-                    mes_pt = traduzir_mes(data_atual.strftime('%B'))
-                    data_formatada = f"Bauru, {data_atual.day} de {mes_pt} de {data_atual.year}"
+            doc = Document()
+            # Configuração das margens
+            sections = doc.sections
+            for section in sections:
+                section.left_margin = Inches(1)
+                section.right_margin = Inches(1)
+            # Ajuste das colunas e formatação do texto
+            header_table = doc.add_table(rows=1, cols=2)
+            header_table.autofit = False
+            header_table.columns[0].width = Inches(1.2)  # Coluna do logo 40% menor
+            header_table.columns[1].width = Inches(5.8)  # Coluna do texto maior
 
-                    # Data com espaço adicional
-                    data_paragraph = doc.add_paragraph()
-                    data_paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-                    data_paragraph.add_run(data_formatada)
+            # Logo
+            logo_cell = header_table.cell(0, 0)
+            logo_paragraph = logo_cell.paragraphs[0]
+            logo_run = logo_paragraph.add_run()
+            logo_run.add_picture('static/images/logo.png', width=Inches(1.2))
 
-                    # Adiciona um enter após a data
-                    doc.add_paragraph()
-                    # Assinatura centralizada
-                    assinatura_paragraph = doc.add_paragraph()
-                    assinatura_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                    assinatura_paragraph.add_run("_" * 50 + "\n")
-                    assinatura_paragraph.add_run(cliente_nome.upper() + "\n")
-                    assinatura_paragraph.add_run(str(cliente_data.get('CPF/CNPJ', '')))
+            # Texto da empresa em cinza
+            info_cell = header_table.cell(0, 1)
+            info_paragraph = info_cell.paragraphs[0]
+            info_run = info_paragraph.add_run("BEIJO E MATOS CONSTRUÇÕES E ENGENHARIA LTDA\nJoaquim da Silva Martha, 12-53 - Sala 3 - Altos da Cidade - Bauru/SP\nguilhermebeijo@bencato.com.br - CNPJ: 26.149.105/0001-09 - www.bencato.com.br")
+            info_run.font.color.rgb = RGBColor(128, 128, 128)  # Cor cinza
+            info_run.font.size = Pt(11)
 
-                    # Salva o documento
-                    doc_buffer = io.BytesIO()
-                    doc.save(doc_buffer)
-                    doc_buffer.seek(0)
-                    documentos_gerados.append((cliente_nome, doc_buffer.getvalue()))
+            doc.add_paragraph()  # Espaço após o cabeçalho
 
-                    preview_content.append({
-                        'nome': cliente_nome,
-                        'conteudo': [
-                            f"RECIBO Nº {numero_documento} - parcela única     VALOR: R$ {valor}",
-                            f"ADMINISTRATIVO - {cliente_nome}",
-                            f"Recebi(emos) a quantia de R$ {valor} ({valor_por_extenso(valor)})"
-                        ]
-                    })
+            # Aplica o modelo selecionado
+            texto_recibo = modelo_texto.format(
+                numero_documento=numero_documento,
+                valor=valor,
+                cliente_nome=cliente_nome,
+                valor_extenso=valor_por_extenso(valor)
+            )
 
-                if not preview_content:
-                    return jsonify({'error': 'Nenhum cliente válido encontrado'}), 400
+            # Divide o texto em linhas para o documento
+            linhas_recibo = texto_recibo.split('\n')
 
-                return jsonify({
-                    'preview': preview_content,
-                    'status': 'success'
-                })
+            # Adiciona as linhas do recibo ao documento
+            for linha in linhas_recibo:
+                p = doc.add_paragraph()
+                p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+                p.add_run(linha)
 
-            except Exception as e:
-                print(f"Erro detalhado: {str(e)}")
-                import traceback
-                print(f"Traceback: {traceback.format_exc()}")
-                return jsonify({'error': str(e)}), 500
+            doc.add_paragraph()  # Espaço antes da data
 
+            # Data em português
+            data_atual = datetime.now()
+            mes_pt = traduzir_mes(data_atual.strftime('%B'))
+            data_formatada = f"Bauru, {data_atual.day} de {mes_pt} de {data_atual.year}"
+
+            # Data com espaço adicional
+            data_paragraph = doc.add_paragraph()
+            data_paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+            data_paragraph.add_run(data_formatada)
+
+            # Adiciona um enter após a data
+            doc.add_paragraph()
+            # Assinatura centralizada
+            assinatura_paragraph = doc.add_paragraph()
+            assinatura_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            assinatura_paragraph.add_run("_" * 50 + "\n")
+            assinatura_paragraph.add_run(cliente_nome.upper() + "\n")
+            assinatura_paragraph.add_run(str(cliente_data.get('CPF/CNPJ', '')))
+
+            # Salva o documento
+            doc_buffer = io.BytesIO()
+            doc.save(doc_buffer)
+            doc_buffer.seek(0)
+            documentos_gerados.append((cliente_nome, doc_buffer.getvalue()))
+
+            preview_content.append({
+                'nome': cliente_nome,
+                'conteudo': linhas_recibo
+            })
+
+        if not preview_content:
+            return jsonify({'error': 'Nenhum cliente válido encontrado'}), 400
+
+        return jsonify({
+            'preview': preview_content,
+            'status': 'success'
+        })
+
+    except Exception as e:
+        print(f"Erro detalhado: {str(e)}")
+        import traceback
+        print(f"Traceback: {traceback.format_exc()}")
+        return jsonify({'error': str(e)}), 500
+    
 @app.route('/download_recibos', methods=['GET'])
 def download_recibos():
     global documentos_gerados
