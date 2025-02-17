@@ -173,7 +173,7 @@
     </div>
     <div class="col-md-4">
         <label for="data" class="form-label">Data:</label>
-        <input type="text" id="valor" class="form-control" placeholder="0,00" maxlength="20">
+        <input type="date" id="data" class="form-control" value="<?php echo date('Y-m-d'); ?>">
     </div>
 </div>
 
@@ -381,10 +381,10 @@ Texto personalizado aqui...`
 
             // Gerar recibos
             $('#gerarRecibos').click(function() {
+                const modeloSelecionado = $('input[name="modeloRecibo"]:checked').val();
                 const empresasSelecionadas = $('#empresas').val() || [];
                 const pessoasSelecionadas = $('#pessoas').val() || [];
                 const todosSelecionados = [...empresasSelecionadas, ...pessoasSelecionadas];
-                const modeloSelecionado = $('input[name="modeloRecibo"]:checked').val();
                 const valor = $('#valor').val();
                 const numero_documento = $('#numero_documento').val();
                 const data = $('#data').val();
@@ -410,6 +410,7 @@ Texto personalizado aqui...`
                         'Content-Type': 'application/json',
                     },
                     body: JSON.stringify({
+                        modelo: modeloSelecionado,
                         clientes: todosSelecionados,
                         valor: valor,
                         numero_documento: numero_documento,

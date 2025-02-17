@@ -56,36 +56,37 @@ def valor_por_extenso(valor):
 
     unidades = ['', 'um', 'dois', 'três', 'quatro', 'cinco', 'seis', 'sete', 'oito', 'nove']
     dezenas = ['', 'dez', 'vinte', 'trinta', 'quarenta', 'cinquenta', 'sessenta', 'setenta', 'oitenta', 'noventa']
+    dezenas_especiais = ['dez', 'onze', 'doze', 'treze', 'quatorze', 'quinze', 'dezesseis', 'dezessete', 'dezoito', 'dezenove']
     centenas = ['', 'cento', 'duzentos', 'trezentos', 'quatrocentos', 'quinhentos', 'seiscentos', 'setecentos', 'oitocentos', 'novecentos']
     
     extenso = []
+    extenso_centavos = ''
     
     # Parte inteira
-    if int_value > 0:
-        # Milhares
+    if int_value >= 1000:
         milhares = int(int_value / 1000)
-        if milhares > 0:
-            if milhares == 1:
-                extenso.append('um mil')
-            else:
-                extenso.extend(numero_para_extenso(milhares))
-                extenso.append('mil')
-            int_value = int_value % 1000
-            if int_value > 0 and int_value < 100:
-                extenso.append('e')
-        
-        # Centenas
-        if int_value >= 100:
-            centena = int(int_value / 100)
-            if centena == 1 and int_value % 100 == 0:
-                extenso.append('cem')
-            else:
-                extenso.append(centenas[centena])
-            int_value = int_value % 100
-            if int_value > 0:
-                extenso.append('e')
-        
-        # Dezenas e unidades
+        if milhares == 1:
+            extenso.append('um mil')
+        else:
+            extenso.extend(numero_para_extenso(milhares))
+            extenso.append('mil')
+        int_value = int_value % 1000
+        if int_value > 0 and int_value < 100:
+            extenso.append('e')
+    
+    if int_value >= 100:
+        centena = int(int_value / 100)
+        if centena == 1 and int_value % 100 == 0:
+            extenso.append('cem')
+        else:
+            extenso.append(centenas[centena])
+        int_value = int_value % 100
+        if int_value > 0:
+            extenso.append('e')
+    
+    if int_value >= 10 and int_value <= 19:
+        extenso.append(dezenas_especiais[int_value - 10])
+    else:
         if int_value >= 10:
             dezena = int(int_value / 10)
             extenso.append(dezenas[dezena])
@@ -95,24 +96,26 @@ def valor_por_extenso(valor):
         
         if int_value > 0:
             extenso.append(unidades[int_value])
-        
-        extenso.append('reais')
     
-    # Parte decimal
+    extenso.append('reais')
+    
+    # Parte dos centavos
     if decimal_value > 0:
-        if len(extenso) > 0:
-            extenso.append('e')
+        extenso.append('e')
+        if decimal_value >= 10 and decimal_value <= 19:
+            extenso_centavos = dezenas_especiais[decimal_value - 10]
+        else:
+            dezena_centavos = int(decimal_value / 10)
+            unidade_centavos = decimal_value % 10
+            
+            if dezena_centavos > 0:
+                extenso_centavos = dezenas[dezena_centavos]
+                if unidade_centavos > 0:
+                    extenso_centavos += ' e ' + unidades[unidade_centavos]
+            elif unidade_centavos > 0:
+                extenso_centavos = unidades[unidade_centavos]
         
-        if decimal_value >= 10:
-            dezena = int(decimal_value / 10)
-            extenso.append(dezenas[dezena])
-            decimal_value = decimal_value % 10
-            if decimal_value > 0:
-                extenso.append('e')
-        
-        if decimal_value > 0:
-            extenso.append(unidades[decimal_value])
-        
+        extenso.append(extenso_centavos)
         extenso.append('centavos')
     
     return ' '.join(extenso)
@@ -183,123 +186,128 @@ def get_clientes():
 
 @app.route('/generate_receipts_bulk', methods=['POST'])
 def generate_receipts_bulk():
-    global documentos_gerados
-    try:
-        dados = request.json
-        clientes_selecionados = dados.get('clientes', [])
-        valor = dados.get('valor', '0.00')
-        numero_documento = dados.get('numero_documento', '')
-        data = dados.get('data', datetime.now().strftime('%d/%m/%Y'))
+            global documentos_gerados
+            try:
+                dados = request.json
+                modelo = dados.get('modelo')
+                clientes_selecionados = dados.get('clientes', [])
+                valor = dados.get('valor', '0.00')
+                numero_documento = dados.get('numero_documento', '')
+                data = dados.get('data', datetime.now().strftime('%d/%m/%Y'))
         
-        documentos_gerados = []
-        preview_content = []
+                documentos_gerados = []
+                preview_content = []
         
-        for cliente_nome in clientes_selecionados:
-            # Verifica se o cliente existe no DataFrame
-            cliente_filtrado = fornecedores_df[fornecedores_df['Razão social'] == cliente_nome]
+                for cliente_nome in clientes_selecionados:
+                    # Verifica se o cliente existe no DataFrame
+                    cliente_filtrado = fornecedores_df[fornecedores_df['Razão social'] == cliente_nome]
             
-            if cliente_filtrado.empty:
-                print(f"Cliente não encontrado: {cliente_nome}")
-                continue
+                    if cliente_filtrado.empty:
+                        print(f"Cliente não encontrado: {cliente_nome}")
+                        continue
                 
-            cliente_data = cliente_filtrado.iloc[0].to_dict()
+                    cliente_data = cliente_filtrado.iloc[0].to_dict()
             
-            doc = Document()
-            # Configuração das margens
-            sections = doc.sections
-            for section in sections:
-                section.left_margin = Inches(1)
-                section.right_margin = Inches(1)
+                    doc = Document()
+                    # Configuração das margens
+                    sections = doc.sections
+                    for section in sections:
+                        section.left_margin = Inches(1)
+                        section.right_margin = Inches(1)
+                    # Ajuste das colunas e formatação do texto
+                    header_table = doc.add_table(rows=1, cols=2)
+                    header_table.autofit = False
+                    header_table.columns[0].width = Inches(1.2)  # Coluna do logo 40% menor
+                    header_table.columns[1].width = Inches(5.8)  # Coluna do texto maior
 
-            # Ajuste do tamanho da logo e colunas
-            header_table = doc.add_table(rows=1, cols=2)
-            header_table.autofit = False
-            header_table.columns[0].width = Inches(1.2)  # 40% menor
-            header_table.columns[1].width = Inches(5.8)  # 20% maior
+                    # Logo
+                    logo_cell = header_table.cell(0, 0)
+                    logo_paragraph = logo_cell.paragraphs[0]
+                    logo_run = logo_paragraph.add_run()
+                    logo_run.add_picture('static/images/logo.png', width=Inches(1.2))
 
-            # Célula da logo
-            logo_cell = header_table.cell(0, 0)
-            logo_paragraph = logo_cell.paragraphs[0]
-            logo_run = logo_paragraph.add_run()
-            logo_run.add_picture('static/images/logo.png', width=Inches(1.2))
+                    # Texto da empresa em cinza
+                    info_cell = header_table.cell(0, 1)
+                    info_paragraph = info_cell.paragraphs[0]
+                    info_run = info_paragraph.add_run("BEIJO E MATOS CONSTRUÇÕES E ENGENHARIA LTDA\nJoaquim da Silva Martha, 12-53 - Sala 3 - Altos da Cidade - Bauru/SP\nguilhermebeijo@bencato.com.br - CNPJ: 26.149.105/0001-09 - www.bencato.com.br")
+                    info_run.font.color.rgb = RGBColor(128, 128, 128)  # Cor cinza
+                    info_run.font.size = Pt(11)
 
-            # Célula das informações com mais espaço
-            info_cell = header_table.cell(0, 1)
-            info_paragraph = info_cell.paragraphs[0]
-            info_run = info_paragraph.add_run("BEIJO E MATOS CONSTRUÇÕES E ENGENHARIA LTDA\nJoaquim da Silva Martha, 12-53 - Sala 3 - Altos da Cidade - Bauru/SP\nguilhermebeijo@bencato.com.br - CNPJ: 26.149.105/0001-09 - www.bencato.com.br")
-            info_run.font.size = Pt(11)
+                    doc.add_paragraph()  # Espaço após o cabeçalho
 
-            doc.add_paragraph()  # Espaço após o cabeçalho
+                    # Linha do recibo e valor
+                    recibo_table = doc.add_table(rows=1, cols=2)
+                    recibo_cell = recibo_table.cell(0, 0)
+                    recibo_run = recibo_cell.paragraphs[0].add_run(f"RECIBO Nº {str(numero_documento)} - parcela única")
+                    recibo_run.bold = True
 
-            # Linha do recibo e valor
-            recibo_table = doc.add_table(rows=1, cols=2)
-            recibo_cell = recibo_table.cell(0, 0)
-            recibo_run = recibo_cell.paragraphs[0].add_run(f"RECIBO Nº {str(numero_documento)} - parcela única")
-            recibo_run.bold = True
+                    valor_cell = recibo_table.cell(0, 1)
+                    valor_paragraph = valor_cell.paragraphs[0]
+                    valor_paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+                    valor_run = valor_paragraph.add_run(f"VALOR: R$ {valor}")
+                    valor_run.bold = True
 
-            valor_cell = recibo_table.cell(0, 1)
-            valor_paragraph = valor_cell.paragraphs[0]
-            valor_paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-            valor_run = valor_paragraph.add_run(f"VALOR: R$ {valor}")
-            valor_run.bold = True
+                    doc.add_paragraph()  # Espaço após a linha do recibo
 
-            doc.add_paragraph()  # Espaço após a linha do recibo
+                    # Nome do cliente
+                    p = doc.add_paragraph()
+                    p.add_run(f"ADMINISTRATIVO - {cliente_nome}")
 
-            # Nome do cliente
-            p = doc.add_paragraph()
-            p.add_run(f"ADMINISTRATIVO - {cliente_nome}")
+                    doc.add_paragraph()  # Espaço após o nome do cliente
+                    # Descrição do recibo
+                    p = doc.add_paragraph()
+                    p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+                    valor_extenso = valor_por_extenso(valor)  # Adiciona esta linha
+                    p.add_run(f"Recebi(emos) a quantia de R$ {valor} ({valor_extenso}) na forma de pagamento em dinheiro, correspondente a serviços prestados e para maior clareza firmo(amos) o presente.")
+                    doc.add_paragraph()  # Espaço antes da data
 
-            doc.add_paragraph()  # Espaço após o nome do cliente
-            # Descrição do recibo
-            p = doc.add_paragraph()
-            p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-            valor_extenso = valor_por_extenso(valor)  # Adiciona esta linha
-            p.add_run(f"Recebi(emos) a quantia de R$ {valor} ({valor_extenso}) na forma de pagamento em dinheiro, correspondente a serviços prestados e para maior clareza firmo(amos) o presente.")
-            doc.add_paragraph()  # Espaço antes da data
+                    # Data em português
+                    data_atual = datetime.now()
+                    mes_pt = traduzir_mes(data_atual.strftime('%B'))
+                    data_formatada = f"Bauru, {data_atual.day} de {mes_pt} de {data_atual.year}"
 
-            # Data em português
-            data_atual = datetime.now()
-            mes_pt = traduzir_mes(data_atual.strftime('%B'))
-            data_formatada = f"Bauru, {data_atual.day} de {mes_pt} de {data_atual.year}"
+                    # Data com espaço adicional
+                    data_paragraph = doc.add_paragraph()
+                    data_paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+                    data_paragraph.add_run(data_formatada)
 
-            data_paragraph = doc.add_paragraph()
-            data_paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-            data_paragraph.add_run(data_formatada)
-            # Assinatura centralizada
-            assinatura_paragraph = doc.add_paragraph()
-            assinatura_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            assinatura_paragraph.add_run("_" * 50 + "\n")
-            assinatura_paragraph.add_run(cliente_nome.upper() + "\n")
-            assinatura_paragraph.add_run(str(cliente_data.get('CPF/CNPJ', '')))
+                    # Adiciona um enter após a data
+                    doc.add_paragraph()
+                    # Assinatura centralizada
+                    assinatura_paragraph = doc.add_paragraph()
+                    assinatura_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    assinatura_paragraph.add_run("_" * 50 + "\n")
+                    assinatura_paragraph.add_run(cliente_nome.upper() + "\n")
+                    assinatura_paragraph.add_run(str(cliente_data.get('CPF/CNPJ', '')))
 
-            # Salva o documento
-            doc_buffer = io.BytesIO()
-            doc.save(doc_buffer)
-            doc_buffer.seek(0)
-            documentos_gerados.append((cliente_nome, doc_buffer.getvalue()))
+                    # Salva o documento
+                    doc_buffer = io.BytesIO()
+                    doc.save(doc_buffer)
+                    doc_buffer.seek(0)
+                    documentos_gerados.append((cliente_nome, doc_buffer.getvalue()))
 
-            preview_content.append({
-                'nome': cliente_nome,
-                'conteudo': [
-                    f"RECIBO Nº {numero_documento} - parcela única     VALOR: R$ {valor}",
-                    f"ADMINISTRATIVO - {cliente_nome}",
-                    f"Recebi(emos) a quantia de R$ {valor} ({valor_por_extenso(valor)})"
-                ]
-            })
+                    preview_content.append({
+                        'nome': cliente_nome,
+                        'conteudo': [
+                            f"RECIBO Nº {numero_documento} - parcela única     VALOR: R$ {valor}",
+                            f"ADMINISTRATIVO - {cliente_nome}",
+                            f"Recebi(emos) a quantia de R$ {valor} ({valor_por_extenso(valor)})"
+                        ]
+                    })
 
-        if not preview_content:
-            return jsonify({'error': 'Nenhum cliente válido encontrado'}), 400
+                if not preview_content:
+                    return jsonify({'error': 'Nenhum cliente válido encontrado'}), 400
 
-        return jsonify({
-            'preview': preview_content,
-            'status': 'success'
-        })
+                return jsonify({
+                    'preview': preview_content,
+                    'status': 'success'
+                })
 
-    except Exception as e:
-        print(f"Erro detalhado: {str(e)}")
-        import traceback
-        print(f"Traceback: {traceback.format_exc()}")
-        return jsonify({'error': str(e)}), 500
+            except Exception as e:
+                print(f"Erro detalhado: {str(e)}")
+                import traceback
+                print(f"Traceback: {traceback.format_exc()}")
+                return jsonify({'error': str(e)}), 500
 
 @app.route('/download_recibos', methods=['GET'])
 def download_recibos():
