@@ -1,6 +1,6 @@
 from flask import Flask, render_template, request, jsonify, send_file
 from docx import Document
-from docx.shared import Cm, Pt, RGBColor
+from docx.shared import Cm, Pt, RGBColor, Inches
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 import io
 import pandas as pd
@@ -8,99 +8,93 @@ from datetime import datetime
 import os
 import zipfile
 import locale
+from datetime import datetime
+data_atual = datetime.now().strftime('%d/%m/%Y')
 
 app = Flask(__name__)
 fornecedores_df = None
 documentos_gerados = []  # Declaração global
 
+def traduzir_mes(mes_en):
+    meses = {
+        'January': 'janeiro',
+        'February': 'fevereiro',
+        'March': 'março',
+        'April': 'abril',
+        'May': 'maio',
+        'June': 'junho',
+        'July': 'julho',
+        'August': 'agosto',
+        'September': 'setembro',
+        'October': 'outubro',
+        'November': 'novembro',
+        'December': 'dezembro'
+    }
+    return meses.get(mes_en, mes_en)
+
+def formatar_data_atual():
+    data_atual = datetime.now()
+    mes_en = data_atual.strftime('%B')
+    mes_pt = traduzir_mes(mes_en)
+    return data_atual.strftime(f'%d de {mes_pt} de %Y')
+
+def processar_modelo(modelo_conteudo, dados_cliente):
+    texto = modelo_conteudo.replace('{cliente_nome}', dados_cliente['nome'])
+    texto = texto.replace('{valor}', dados_cliente['valor'])
+    texto = texto.replace('{valor_extenso}', dados_cliente['valor_extenso'])
+    texto = texto.replace('{numero_documento}', dados_cliente['numero_documento'])
+    texto = texto.replace('{data}', dados_cliente['data'])
+    return texto.split('\n')
+
 def valor_por_extenso(valor):
+    valor = float(valor)
     if valor == 0:
-        return "zero reais"
+        return 'zero reais'
         
-    unidades = ["", "um", "dois", "três", "quatro", "cinco", "seis", "sete", "oito", "nove"]
-    dezenas = ["", "dez", "vinte", "trinta", "quarenta", "cinquenta", "sessenta", "setenta", "oitenta", "noventa"]
-    dez_a_dezenove = ["dez", "onze", "doze", "treze", "quatorze", "quinze", "dezesseis", "dezessete", "dezoito", "dezenove"]
-    centenas = ["", "cento", "duzentos", "trezentos", "quatrocentos", "quinhentos", "seiscentos", "setecentos", "oitocentos", "novecentos"]
+    int_value = int(valor)
+    decimal_value = int((valor - int_value) * 100)
+
+    unidades = ['', 'um', 'dois', 'três', 'quatro', 'cinco', 'seis', 'sete', 'oito', 'nove']
+    dezenas = ['', 'dez', 'vinte', 'trinta', 'quarenta', 'cinquenta', 'sessenta', 'setenta', 'oitenta', 'noventa']
+    centenas = ['', 'cento', 'duzentos', 'trezentos', 'quatrocentos', 'quinhentos', 'seiscentos', 'setecentos', 'oitocentos', 'novecentos']
     
-    reais = int(valor)
-    centavos = int((valor * 100) % 100)
+    extenso = []
     
-    if reais == 0 and centavos == 0:
-        return "zero reais"
+    # Parte inteira
+    if int_value > 0:
+        if int_value == 1:
+            extenso.append('um real')
+        else:
+            # Lógica para converter o número
+            if int_value >= 100:
+                centena = int(int_value / 100)
+                extenso.append(centenas[centena])
+                int_value = int_value % 100
+            
+            if int_value >= 10:
+                dezena = int(int_value / 10)
+                extenso.append(dezenas[dezena])
+                int_value = int_value % 10
+            
+            if int_value > 0:
+                extenso.append(unidades[int_value])
+            
+            extenso.append('reais')
+    
+    # Parte decimal
+    if decimal_value > 0:
+        extenso.append('e')
+        if decimal_value >= 10:
+            dezena = int(decimal_value / 10)
+            extenso.append(dezenas[dezena])
+            decimal_value = decimal_value % 10
         
-    texto = []
+        if decimal_value > 0:
+            extenso.append(unidades[decimal_value])
+        
+        extenso.append('centavos')
     
-    # Processa reais
-    if reais > 0:
-        if reais == 1:
-            texto.append("um real")
-        else:
-            # Processa milhares
-            milhares = reais // 1000
-            if milhares > 0:
-                if milhares == 1:
-                    texto.append("mil")
-                else:
-                    texto.append(valor_por_extenso(milhares) + " mil")
-            
-            # Processa centenas, dezenas e unidades
-            resto = reais % 1000
-            if resto > 0:
-                if resto < 100:
-                    if milhares > 0:
-                        texto.append("e")
-                if resto == 100:
-                    texto.append("cem")
-                else:
-                    c = resto // 100
-                    d = (resto % 100) // 10
-                    u = resto % 10
-                    
-                    if c > 0:
-                        texto.append(centenas[c])
-                    if d > 0:
-                        if c > 0:
-                            texto.append("e")
-                        if d == 1 and u > 0:
-                            texto.append(dez_a_dezenove[u])
-                        else:
-                            texto.append(dezenas[d])
-                            if u > 0:
-                                texto.append("e")
-                                texto.append(unidades[u])
-                    elif u > 0:
-                        if c > 0:
-                            texto.append("e")
-                        texto.append(unidades[u])
-            
-            texto.append("reais")
-    
-    # Processa centavos
-    if centavos > 0:
-        if reais > 0:
-            texto.append("e")
-        if centavos == 1:
-            texto.append("um centavo")
-        else:
-            d = centavos // 10
-            u = centavos % 10
-            
-            if d == 1:
-                if u > 0:
-                    texto.append(dez_a_dezenove[u])
-                else:
-                    texto.append(dezenas[d])
-            else:
-                if d > 0:
-                    texto.append(dezenas[d])
-                    if u > 0:
-                        texto.append("e")
-                        texto.append(unidades[u])
-                else:
-                    texto.append(unidades[u])
-            texto.append("centavos")
-    
-    return " ".join(texto)
+    return ' '.join(extenso)
 
 @app.route('/')
 def index():
@@ -154,188 +148,71 @@ def get_clientes():
 def generate_receipts_bulk():
     global documentos_gerados
     try:
-        clientes_selecionados = request.json.get('clientes', [])
-        modelo_selecionado = request.json.get('modelo', '1')
+        dados = request.json
+        clientes_selecionados = dados.get('clientes', [])
+        valor = dados.get('valor', '0.00')
         documentos_gerados = []
         preview_content = []
+        
+        locale.setlocale(locale.LC_ALL, 'pt_BR.UTF-8')
+        data_atual = datetime.now().strftime('%d de %B de %Y')
 
         for cliente_nome in clientes_selecionados:
             cliente_data = fornecedores_df[fornecedores_df['Razão social'] == cliente_nome].iloc[0].to_dict()
             
-            # Converte valores numéricos para string
-            valor = str(float(cliente_data.get('amount', '0.00')))
-            
-            # Cabeçalho comum para ambos os modelos
-            header = [
-                "Beijo e Matos Construções e Engenharia LTDA",
-                "Joaquim da Silva Martha, 12-53 - Sala 3 - Altos da Cidade - Bauru/SP",
-                "guilhermebeijo@bencato.com.br - CNPJ: 26.149.105/0001-09 - www.bencato.com.br",
-                "Relatório de recibos"
-            ]
-
-            if modelo_selecionado == '1':
-                # Modelo 1 - Emitente (como na primeira imagem)
-                content = [
-                    *header,
-                    f"RECIBO Nº {str(cliente_data.get('document_number', '0001'))} - parcela única",
-                    f"VALOR: R$ {valor}",
-                    f"ADMINISTRATIVO - {cliente_nome}",
-                    f"Recebi(emos) a quantia de R$ {valor} ({valor_por_extenso(float(valor))})",
-                    f"na forma de pagamento {str(cliente_data.get('payment_method', 'Conciliação'))}",
-                    f"correspondente a {str(cliente_data.get('description', 'VALE ALIMENTAÇÃO'))} (documento número {str(cliente_data.get('document_number', '0001'))} parcela única)",
-                    "e para maior clareza firmo(amos) o presente.",
-                    f"Bauru, {datetime.now().strftime('%d de %B de %Y')}",
-                    cliente_nome.upper(),
-                    str(cliente_data.get('CPF/CNPJ', ''))
-                ]
-            else:
-                # Modelo 2 - Destinatário (como na segunda imagem)
-                content = [
-                    *header,
-                    f"RECIBO Nº {str(cliente_data.get('document_number', '0001'))} - parcela única",
-                    f"VALOR: R$ {valor}",
-                    f"{cliente_nome}",
-                    f"Recebemos de BENCATO CONSTRUCOES LTDA a quantia de R$ {valor} ({valor_por_extenso(float(valor))})",
-                    f"na forma de pagamento {str(cliente_data.get('payment_method', 'Conciliação'))}, correspondente a",
-                    f"PARCELA ADM OBRA - CONFORME CONTRATO (documento número {str(cliente_data.get('document_number', '0001'))} parcela única)",
-                    "e para maior clareza firmo(amos) o presente.",
-                    f"Bauru, {datetime.now().strftime('%d de %B de %Y')}",
-                    "BEIJO E MATOS CONSTRUCOES E ENGENHARIA LTDA",
-                    "26.149.105/0001-09"
-                ]
-            
-            # Criar documento Word
             doc = Document()
             
-            # Configurar margens do documento
-            section = doc.sections[0]
-            section.left_margin = Cm(2.5)
-            section.right_margin = Cm(2.5)
-            section.top_margin = Cm(2.5)
-            section.bottom_margin = Cm(2.5)
-
-            # Criar tabela para cabeçalho
-            table = doc.add_table(rows=1, cols=2)
-            table.autofit = False
-            table.allow_autofit = False
+            # Configuração das margens
+            sections = doc.sections
+            for section in sections:
+                section.left_margin = Inches(1)
+                section.right_margin = Inches(1)
             
-            # Configurar larguras das colunas
-            table.columns[0].width = Cm(6)  # Largura maior para o logo
-            table.columns[1].width = Cm(12)  # Ajuste da largura do texto
-            
-            # Células da tabela
-            logo_cell = table.cell(0, 0)
-            text_cell = table.cell(0, 1)
-            
-            # Adicionar logo
-            logo_path = os.path.join('static', 'images', 'logo.png')
-            if os.path.exists(logo_path):
-                logo_paragraph = logo_cell.paragraphs[0]
-                logo_run = logo_paragraph.add_run()
-                logo_run.add_picture(logo_path, width=Cm(6))  # Dobro do tamanho
-            
-            # Adicionar texto do cabeçalho
-            text_paragraph = text_cell.paragraphs[0]
-            text_paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
-            
-            # Nome da empresa
-            empresa_run = text_paragraph.add_run("Beijo e Matos Construções e Engenharia LTDA\n")
-            empresa_run.font.size = Pt(10)
-            empresa_run.font.bold = True
-            
-            # Endereço
-            endereco_run = text_paragraph.add_run("Joaquim da Silva Martha, 12-53 - Sala 3 - Altos da Cidade - Bauru/SP\n")
-            endereco_run.font.size = Pt(10)
-            
-            # Email e site
-            contato_run = text_paragraph.add_run("guilhermebeijo@bencato.com.br - CNPJ: 26.149.105/0001-09 - www.bencato.com.br")
-            contato_run.font.size = Pt(10)
-            
-            # Adicionar "Relatório de recibos" em azul
-            doc.add_paragraph()  # Espaço após o cabeçalho
-            relatorio_paragraph = doc.add_paragraph()
-            relatorio_run = relatorio_paragraph.add_run("Relatório de recibos")
-            relatorio_run.font.color.rgb = RGBColor(0, 70, 127)  # Azul corporativo
-            relatorio_run.font.size = Pt(11)
-            
-            doc.add_paragraph()  # Espaço após o título
-            
-            # Criar tabela para número do recibo e valor
+            # Adiciona logo e informações da empresa em uma tabela
             header_table = doc.add_table(rows=1, cols=2)
             header_table.autofit = False
-            header_table.allow_autofit = False
+            header_table.columns[0].width = Inches(2.0)
             
-            # Configurar larguras das colunas do cabeçalho
-            header_table.columns[0].width = Cm(10)
-            header_table.columns[1].width = Cm(8)
+            # Célula da logo
+            logo_cell = header_table.cell(0, 0)
+            logo_paragraph = logo_cell.paragraphs[0]
+            logo_run = logo_paragraph.add_run()
+            logo_run.add_picture('static/images/logo.png', width=Inches(2.0))
             
-            # Adicionar número do recibo e valor
-            recibo_cell = header_table.cell(0, 0)
-            valor_cell = header_table.cell(0, 1)
+            # Célula das informações da empresa
+            info_cell = header_table.cell(0, 1)
+            info_cell.text = "BEIJO E MATOS CONSTRUÇÕES E ENGENHARIA LTDA\nJoaquim da Silva Martha, 12-53 - Sala 3 - Altos da Cidade - Bauru/SP\nguilhermebeijo@bencato.com.br - CNPJ: 26.149.105/0001-09 - www.bencato.com.br"
             
-            recibo_paragraph = recibo_cell.paragraphs[0]
-            recibo_run = recibo_paragraph.add_run(f"RECIBO Nº {str(cliente_data.get('document_number', '0001'))} - parcela única")
-            recibo_run.bold = True
-            recibo_run.font.size = Pt(12)
+            doc.add_paragraph()  # Espaço
             
-            valor_paragraph = valor_cell.paragraphs[0]
-            valor_paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-            valor_run = valor_paragraph.add_run(f"VALOR: R$ {valor}")
-            valor_run.bold = True
-            valor_run.font.size = Pt(12)
+            # Linha do recibo e valor
+            recibo_table = doc.add_table(rows=1, cols=2)
+            recibo_cell = recibo_table.cell(0, 0)
+            recibo_cell.text = f"RECIBO Nº {str(cliente_data.get('document_number', '0001'))} - parcela única"
+            valor_cell = recibo_table.cell(0, 1)
+            valor_cell.text = f"VALOR: R$ {valor}"
             
-            # Adicionar nome do cliente
-            if modelo_selecionado == '1':
-                cliente_paragraph = doc.add_paragraph()
-                cliente_run = cliente_paragraph.add_run(f"ADMINISTRATIVO - {cliente_nome}")
-                cliente_run.font.size = Pt(11)
+            # Informações do cliente e descrição
+            p = doc.add_paragraph()
+            p.add_run(f"ADMINISTRATIVO - {cliente_nome}\n").bold = True
+            p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+            valor_extenso = valor_por_extenso(valor)
+
+            p.add_run(f"Recebi(emos) a quantia de R$ {valor} ({valor_extenso}) na forma de pagamento em dinheiro, correspondente a serviços prestados e para maior clareza firmo(amos) o presente.")
             
-            # Adicionar texto justificado em uma linha
-            doc.add_paragraph()  # Espaço antes do texto
-            texto_principal = doc.add_paragraph()
-            texto_principal.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-            
-            if modelo_selecionado == '1':
-                texto = f"Recebi(emos) a quantia de R$ {valor} ({valor_por_extenso(float(valor))}) na forma de pagamento {str(cliente_data.get('payment_method', 'Conciliação'))}, correspondente a {str(cliente_data.get('description', 'VALE ALIMENTAÇÃO'))} (documento número {str(cliente_data.get('document_number', '0001'))} parcela única) e para maior clareza firmo(amos) o presente."
-            else:
-                texto = f"Recebemos de BENCATO CONSTRUCOES LTDA a quantia de R$ {valor} ({valor_por_extenso(float(valor))}) na forma de pagamento {str(cliente_data.get('payment_method', 'Conciliação'))}, correspondente a PARCELA ADM OBRA - CONFORME CONTRATO (documento número {str(cliente_data.get('document_number', '0001'))} parcela única) e para maior clareza firmo(amos) o presente."
-            
-            texto_run = texto_principal.add_run(texto)
-            texto_run.font.size = Pt(11)
-            
-            # Adicionar data
-            data_atual = datetime.now().strftime('%d de %B de %Y')
+            # Data alinhada à direita
             data_paragraph = doc.add_paragraph()
             data_paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-            data_run = data_paragraph.add_run(f"Bauru, {data_atual}")
-            data_run.font.size = Pt(11)
+            data_paragraph.add_run(f"Bauru, {data_atual}")
             
-            # Adicionar espaço antes da linha de assinatura
-            doc.add_paragraph()
-            doc.add_paragraph()
+            doc.add_paragraph()  # Espaço
             
-            # Adicionar linha para assinatura
-            linha_assinatura = doc.add_paragraph()
-            linha_assinatura.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            linha_run = linha_assinatura.add_run("_" * 50)
-            
-            # Adicionar nome abaixo da linha
-            nome_assinatura = doc.add_paragraph()
-            nome_assinatura.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            if modelo_selecionado == '1':
-                nome_run = nome_assinatura.add_run(cliente_nome.upper())
-                cpf_cnpj = doc.add_paragraph()
-                cpf_cnpj.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                cpf_cnpj.add_run(str(cliente_data.get('CPF/CNPJ', '')))
-            else:
-                nome_run = nome_assinatura.add_run("BEIJO E MATOS CONSTRUCOES E ENGENHARIA LTDA")
-                cpf_cnpj = doc.add_paragraph()
-                cpf_cnpj.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                cpf_cnpj.add_run("26.149.105/0001-09")
-                
-                # Adicionar espaçamento após o cabeçalho
-                if i == 3:
-                    paragraph.space_after = Pt(20)
+            # Assinatura centralizada
+            assinatura_paragraph = doc.add_paragraph()
+            assinatura_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            assinatura_paragraph.add_run("_" * 50 + "\n")
+            assinatura_paragraph.add_run(cliente_nome.upper() + "\n")
+            assinatura_paragraph.add_run(str(cliente_data.get('CPF/CNPJ', '')))
 
             # Salva o documento
             doc_buffer = io.BytesIO()
@@ -343,10 +220,10 @@ def generate_receipts_bulk():
             doc_buffer.seek(0)
             documentos_gerados.append((cliente_nome, doc_buffer.getvalue()))
 
-            # Adiciona à preview
+            # Preview content mantém o formato anterior para compatibilidade
             preview_content.append({
                 'nome': cliente_nome,
-                'conteudo': content
+                'conteudo': [str(p.text) for p in doc.paragraphs]
             })
 
         return jsonify({
@@ -384,8 +261,8 @@ def download_recibos():
                 doc_buffer.close()
 
         # Prepara o buffer para leitura
-        zip_buffer.seek(0)
-        
+        zip_buffer.seek(0)# Prepara o buffer para leitura
+                
         # Envia o arquivo
         response = send_file(
             zip_buffer,
@@ -409,3 +286,5 @@ def download_recibos():
 
 if __name__ == '__main__':
     app.run(debug=True)
+
+
