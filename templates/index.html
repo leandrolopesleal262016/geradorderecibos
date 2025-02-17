@@ -33,11 +33,74 @@
             border: 1px dashed #ccc;
             background-color: #f8f9fa;
         }
+        
+        .modelo-recibo {
+            transition: all 0.3s ease;
+        }
+        
+        .modelo-recibo:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        
+        .modelo-recibo.selected {
+            border: 2px solid #0d6efd;
+        }
     </style>
 </head>
 <body>
     <div class="container mt-5">
         <h2 class="mb-4">Gerador de Recibos</h2>
+        
+        <!-- Seleção de modelo -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <h4 class="mb-3">Selecione o modelo de recibo:</h4>
+                <div class="d-flex gap-4">
+                    <!-- Modelo 1 -->
+                    <div class="card modelo-recibo" style="width: 300px; cursor: pointer;" data-modelo="1">
+                        <div class="card-header">
+                            <h5 class="mb-0">Modelo Emitente</h5>
+                        </div>
+                        <div class="card-body">
+                            <img src="/static/images/logo.png" alt="Logo Bencato" style="width: 100px; margin-bottom: 10px;">
+                            <div class="modelo-preview p-2 border rounded" style="font-size: 0.8em;">
+                                <p class="mb-1"><strong>RECIBO Nº XXXXX - parcela única</strong></p>
+                                <p class="mb-1">ADMINISTRATIVO - Nome do Cliente</p>
+                                <p class="mb-1">Recebi(emos) a quantia de R$ XXX,XX</p>
+                            </div>
+                        </div>
+                        <div class="card-footer">
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="modeloRecibo" id="modelo1" value="1" checked>
+                                <label class="form-check-label" for="modelo1">Selecionar este modelo</label>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Modelo 2 -->
+                    <div class="card modelo-recibo" style="width: 300px; cursor: pointer;" data-modelo="2">
+                        <div class="card-header">
+                            <h5 class="mb-0">Modelo Destinatário</h5>
+                        </div>
+                        <div class="card-body">
+                            <img src="/static/images/logo.png" alt="Logo Bencato" style="width: 100px; margin-bottom: 10px;">
+                            <div class="modelo-preview p-2 border rounded" style="font-size: 0.8em;">
+                                <p class="mb-1"><strong>RECIBO Nº XXXXX - parcela única</strong></p>
+                                <p class="mb-1">Recebemos de CLIENTE a quantia de R$ XXX,XX</p>
+                                <p class="mb-1">correspondente a ...</p>
+                            </div>
+                        </div>
+                        <div class="card-footer">
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="modeloRecibo" id="modelo2" value="2">
+                                <label class="form-check-label" for="modelo2">Selecionar este modelo</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
         
         <div class="row mb-4">
             <div class="col-md-6">
@@ -91,6 +154,17 @@
                 allowClear: true
             });
 
+            // Adiciona eventos para seleção de modelo
+            $('.modelo-recibo').click(function() {
+                const modeloId = $(this).data('modelo');
+                $(`#modelo${modeloId}`).prop('checked', true);
+                $('.modelo-recibo').removeClass('selected');
+                $(this).addClass('selected');
+            });
+
+            // Marca o primeiro modelo como selecionado por padrão
+            $('.modelo-recibo[data-modelo="1"]').addClass('selected');
+
             $('#selectAllPessoas').click(function() {
                 const pessoasSelect = $('#pessoas');
                 const todasOpcoes = pessoasSelect.find('option').map(function() {
@@ -140,6 +214,7 @@
                 const empresasSelecionadas = $('#empresas').val() || [];
                 const pessoasSelecionadas = $('#pessoas').val() || [];
                 const todosSelecionados = [...empresasSelecionadas, ...pessoasSelecionadas];
+                const modeloSelecionado = $('input[name="modeloRecibo"]:checked').val();
 
                 if (todosSelecionados.length === 0) {
                     alert('Por favor, selecione pelo menos um cliente.');
@@ -152,7 +227,8 @@
                         'Content-Type': 'application/json',
                     },
                     body: JSON.stringify({
-                        clientes: todosSelecionados
+                        clientes: todosSelecionados,
+                        modelo: modeloSelecionado
                     })
                 })
                 .then(response => response.json())
