@@ -27,6 +27,12 @@
             margin-bottom: 20px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
+
+        .linha-recibo[contenteditable="true"] {
+            padding: 5px;
+            border: 1px dashed #ccc;
+            background-color: #f8f9fa;
+        }
     </style>
 </head>
 <body>
@@ -41,6 +47,7 @@
             </div>
             <div class="col-md-6">
                 <label for="pessoas" class="form-label">Pessoas Físicas:</label>
+                <button id="selectAllPessoas" class="btn btn-secondary btn-sm mb-2">Selecionar Todas</button>
                 <select id="pessoas" class="form-control select2" multiple>
                 </select>
             </div>
@@ -75,11 +82,26 @@
 
     <script>
         $(document).ready(function() {
+            let previewData = null;
+
             // Inicializa Select2
             $('.select2').select2({
                 width: '100%',
                 placeholder: 'Selecione os clientes',
                 allowClear: true
+            });
+
+            $('#selectAllPessoas').click(function() {
+                const pessoasSelect = $('#pessoas');
+                const todasOpcoes = pessoasSelect.find('option').map(function() {
+                    return this.value;
+                }).get();
+                
+                pessoasSelect.select2('destroy');
+                pessoasSelect.val(todasOpcoes);
+                pessoasSelect.select2();
+                
+                console.log("Opções selecionadas:", todasOpcoes);
             });
 
             // Carrega os clientes
@@ -112,7 +134,7 @@
                 })
                 .catch(error => {
                     console.error("Erro ao carregar clientes:", error);
-                });        });
+                });
 
             $('#gerarRecibos').click(function() {
                 const empresasSelecionadas = $('#empresas').val() || [];
@@ -135,6 +157,7 @@
                 })
                 .then(response => response.json())
                 .then(data => {
+                    previewData = data;
                     const previewArea = $('#previewArea');
                     const recibosPreview = $('#recibosPreview');
                     
@@ -143,13 +166,20 @@
                     data.preview.forEach(recibo => {
                         const reciboHtml = `
                             <div class="card mb-3">
-                                <div class="card-header bg-primary text-white">
+                                <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
                                     <h5 class="mb-0">${recibo.nome}</h5>
+                                    <button class="btn btn-light btn-sm editar-recibo">Editar</button>
                                 </div>
                                 <div class="card-body">
-                                    ${recibo.conteudo.map(linha => `
-                                        <p class="${linha.includes('RECIBO') || linha.includes('VALOR') ? 'fw-bold' : ''}">${linha}</p>
+                                    ${recibo.conteudo.map((linha, index) => `
+                                        <p class="linha-recibo ${linha.includes('RECIBO') || linha.includes('VALOR') ? 'fw-bold' : ''}" 
+                                           data-index="${index}" 
+                                           contenteditable="false">${linha}</p>
                                     `).join('')}
+                                </div>
+                                <div class="card-footer" style="display: none;">
+                                    <button class="btn btn-success btn-sm salvar-recibo me-2">Salvar</button>
+                                    <button class="btn btn-danger btn-sm cancelar-edicao">Cancelar</button>
                                 </div>
                             </div>
                         `;
@@ -158,31 +188,61 @@
                     
                     previewArea.show();
                     $('#downloadRecibos').show();
-                });                                    $('#downloadRecibos').click(function(e) {
-                                        e.preventDefault();
-                                        fetch('/download_recibos')
-                                            .then(response => response.blob())
-                                            .then(blob => {
-                                                const url = window.URL.createObjectURL(blob);
-                                                const a = document.createElement('a');
-                                                a.href = url;
-                                                a.download = 'recibos.zip';
-                                                document.body.appendChild(a);
-                                                a.click();
-                                                window.URL.revokeObjectURL(url);
-                                                a.remove();
-                                            })
-                                            .catch(error => {
-                                                console.error('Erro no download:', error);
-                                                alert('Erro ao baixar os recibos');
-                                            });
-                                    });
-                })
-                .catch(error => {
-                    console.error('Erro:', error);
-                    alert('Erro ao gerar recibos.');
                 });
-            
+            });
+
+            $(document).on('click', '.editar-recibo', function() {
+                const card = $(this).closest('.card');
+                card.find('.linha-recibo').attr('contenteditable', 'true');
+                card.find('.card-footer').show();
+                $(this).hide();
+            });
+
+            $(document).on('click', '.salvar-recibo', function() {
+                const card = $(this).closest('.card');
+                card.find('.linha-recibo').attr('contenteditable', 'false');
+                card.find('.card-footer').hide();
+                card.find('.editar-recibo').show();
+                
+                const reciboIndex = card.index();
+                card.find('.linha-recibo').each(function(index) {
+                    previewData.preview[reciboIndex].conteudo[index] = $(this).text();
+                });
+            });
+
+            $(document).on('click', '.cancelar-edicao', function() {
+                const card = $(this).closest('.card');
+                const reciboIndex = card.index();
+                
+                card.find('.linha-recibo').each(function(index) {
+                    $(this).text(previewData.preview[reciboIndex].conteudo[index]);
+                });
+                
+                card.find('.linha-recibo').attr('contenteditable', 'false');
+                card.find('.card-footer').hide();
+                card.find('.editar-recibo').show();
+            });
+
+            $('#downloadRecibos').click(function(e) {
+                e.preventDefault();
+                fetch('/download_recibos')
+                    .then(response => response.blob())
+                    .then(blob => {
+                        const url = window.URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = 'recibos.zip';
+                        document.body.appendChild(a);
+                        a.click();
+                        window.URL.revokeObjectURL(url);
+                        a.remove();
+                    })
+                    .catch(error => {
+                        console.error('Erro no download:', error);
+                        alert('Erro ao baixar os recibos');
+                    });
+            });
+        });
     </script>
 </body>
 </html>
