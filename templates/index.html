@@ -383,11 +383,17 @@
                       const modeloId = $('#modeloEditModal').data('modelo-id');
                       const nome = $('#modeloNome').val();
                       const conteudo = $('#modeloConteudo').val();
-                      
-                      console.log("Salvando modelo:", modeloId);
-                      
-                      fetch('/salvar_modelo', {
-                          method: 'POST',
+            
+                      const dados = {
+                          nome: nome,
+                          conteudo: conteudo
+                      };
+            
+                      const method = 'POST';
+                      const url = '/salvar_modelo';
+            
+                      fetch(url, {
+                          method: method,
                           headers: {
                               'Content-Type': 'application/json',
                           },
@@ -413,6 +419,7 @@
                           alert('Erro ao salvar modelo: ' + error.message);
                       });
                   });
+
                   function atualizarPreviewModelo(modelo) {
                       const modeloCard = $(`.modelo-recibo[data-modelo="${modelo.id}"]`);
                       modeloCard.find('.card-header h5').text(modelo.nome);
@@ -449,15 +456,13 @@
                 console.log("Opções selecionadas:", todasOpcoes);
             });   
 
-            // Gerar recibos
+            // Gerar recibos (modificado para armazenar o ID)
             $('#gerarRecibos').click(function() {
                 const modeloId = $('input[name="modeloRecibo"]:checked').val();
-                const modeloSalvo = JSON.parse(localStorage.getItem('modelosRecibo'))[modeloId];
                 const empresasSelecionadas = $('#empresas').val() || [];
                 const pessoasSelecionadas = $('#pessoas').val() || [];
                 const todosSelecionados = [...empresasSelecionadas, ...pessoasSelecionadas];
                 const valor = $('#valor').val();
-                const numero_documento = $('#numero_documento').val();
                 const data = $('#data').val();
 
                 if (todosSelecionados.length === 0) {
@@ -477,10 +482,9 @@
                     },
                     body: JSON.stringify({
                         modelo: modeloId,
-                        modeloConteudo: modeloSalvo.conteudo,
+                        modeloConteudo: $('.modelo-recibo[data-modelo="' + modeloId + '"] .modelo-preview').text(),
                         clientes: todosSelecionados,
                         valor: valor,
-                        numero_documento: numero_documento,
                         data: data
                     })
                 })
@@ -490,7 +494,7 @@
                         throw new Error('Formato de dados inválido');
                     }
                     
-                    previewData = data;
+                    previewData = data;  // Armazena os dados, incluindo os IDs
                     const previewArea = $('#previewArea');
                     const recibosPreview = $('#recibosPreview');
                     
@@ -498,15 +502,15 @@
                     
                     data.preview.forEach(recibo => {
                         const reciboHtml = `
-                            <div class="card mb-3">
+                            <div class="card mb-3" data-recibo-id="${recibo.id}">  <!-- Armazena o ID aqui -->
                                 <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
                                     <h5 class="mb-0">${recibo.nome}</h5>
                                     <button class="btn btn-light btn-sm editar-recibo">Editar</button>
                                 </div>
                                 <div class="card-body">
                                     ${recibo.conteudo.map(linha => `
-                                        <p class="linha-recibo" 
-                                           data-index="${recibo.conteudo.indexOf(linha)}" 
+                                        <p class="linha-recibo"
+                                           data-index="${recibo.conteudo.indexOf(linha)}"
                                            contenteditable="false">${linha}</p>
                                     `).join('')}
                                 </div>
@@ -535,16 +539,46 @@
                 $(this).hide();
             });
 
-            // Salvar recibo editado
+            // Salvar recibo editado (agora usa o data-recibo-id do card)
             $(document).on('click', '.salvar-recibo', function() {
+                console.log("Iniciando salvamento do recibo");
                 const card = $(this).closest('.card');
-                card.find('.linha-recibo').attr('contenteditable', 'false');
-                card.find('.card-footer').hide();
-                card.find('.editar-recibo').show();
-                
-                const reciboIndex = card.index();
-                card.find('.linha-recibo').each(function(index) {
-                    previewData.preview[reciboIndex].conteudo[index] = $(this).text();
+                const reciboId = card.data('recibo-id'); // Obtém o ID do atributo data
+                const conteudoAtualizado = [];
+
+                card.find('.linha-recibo').each(function() {
+                    conteudoAtualizado.push($(this).text().trim());
+                });
+
+                console.log("Conteúdo atualizado capturado:", conteudoAtualizado);
+                console.log("Recibo ID:", reciboId); // Verifica se o ID está correto
+
+                fetch('/atualizar_recibo', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        recibo_id: reciboId,
+                        conteudo: conteudoAtualizado
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'sucesso') {
+                        console.log("Recibo atualizado com sucesso no banco de dados");
+                        alert('Recibo atualizado com sucesso!');
+                        card.find('.linha-recibo').attr('contenteditable', 'false');
+                        card.find('.card-footer').hide();
+                        card.find('.editar-recibo').show();
+                    } else {
+                        console.error("Erro ao atualizar recibo:", data.mensagem);
+                        alert('Erro ao atualizar recibo: ' + data.mensagem);
+                    }
+                })
+                .catch(error => {
+                    console.error("Erro na requisição:", error);
+                    alert('Erro ao processar a atualização do recibo');
                 });
             });
 
@@ -685,6 +719,7 @@
         });
     });
 </script>
+
 
    
 <footer class="bg-light py-3 text-center mt-5">

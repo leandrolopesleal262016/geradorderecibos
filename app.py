@@ -336,6 +336,7 @@ def generate_receipts_bulk():
 
             documentos_gerados.append((cliente_nome, doc_buffer.getvalue()))
             preview_content.append({
+                'id': recibo.id,
                 'nome': cliente_nome,
                 'conteudo': linhas_recibo
             })
@@ -350,6 +351,7 @@ def generate_receipts_bulk():
         import traceback
         print(f"Traceback: {traceback.format_exc()}")
         return jsonify({'error': str(e)}), 500
+
 
 
 @app.route('/download_recibos', methods=['GET'])
@@ -530,78 +532,92 @@ def atualizar_recibo():
         dados = request.json
         recibo_id = dados.get('recibo_id')
         conteudo_novo = dados.get('conteudo')
-    
+
         print(f"Recibo ID: {recibo_id}")
-        print(f"Novo conteúdo: {conteudo_novo}")
-    
+        print(f"Novo conteúdo recebido: {conteudo_novo}")
+
         recibo = ReciboGerado.query.get_or_404(recibo_id)
-    
-        # Cria novo documento
+        print(f"Recibo encontrado: {recibo.numero_recibo}")
+
+        # Cria novo documento Word
         doc = Document()
-    
-        # Configurações do documento
         sections = doc.sections
         for section in sections:
             section.left_margin = Inches(1)
             section.right_margin = Inches(1)
-    
-        # Adiciona cabeçalho
+
+        # Adiciona cabeçalho com logo e informações da empresa
         header_table = doc.add_table(rows=1, cols=2)
         header_table.autofit = False
         header_table.columns[0].width = Inches(1.2)
         header_table.columns[1].width = Inches(5.8)
-    
+
         # Logo
         logo_cell = header_table.cell(0, 0)
-        logo_run = logo_cell.paragraphs[0].add_run()
+        logo_paragraph = logo_cell.paragraphs[0]
+        logo_run = logo_paragraph.add_run()
         logo_run.add_picture('static/images/logo.png', width=Inches(1.2))
-    
-        # Informações da empresa
+
+        # Texto da empresa
         info_cell = header_table.cell(0, 1)
-        info_run = info_cell.paragraphs[0].add_run()
-        info_run.text = "BEIJO E MATOS CONSTRUÇÕES E ENGENHARIA LTDA\n"
-        info_run.text += "Joaquim da Silva Martha, 12-53 - Sala 3 - Altos da Cidade - Bauru/SP\n"
-        info_run.text += "guilhermebeijo@bencato.com.br - CNPJ: 26.149.105/0001-09 - www.bencato.com.br"
+        info_paragraph = info_cell.paragraphs[0]
+        info_run = info_paragraph.add_run("BEIJO E MATOS CONSTRUÇÕES E ENGENHARIA LTDA\nJoaquim da Silva Martha, 12-53 - Sala 3 - Altos da Cidade - Bauru/SP\nguilhermebeijo@bencato.com.br - CNPJ: 26.149.105/0001-09 - www.bencato.com.br")
         info_run.font.color.rgb = RGBColor(128, 128, 128)
         info_run.font.size = Pt(11)
-    
-        # Adiciona conteúdo atualizado
+
         doc.add_paragraph()  # Espaço após cabeçalho
-    
+
+        # Adiciona conteúdo atualizado
         for linha in conteudo_novo:
             if linha.strip():
                 p = doc.add_paragraph()
                 p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
                 p.add_run(linha.strip())
-    
+
+        doc.add_paragraph()  # Espaço antes da data
+
+        # Data em português
+        data_atual = datetime.now()
+        mes_pt = traduzir_mes(data_atual.strftime('%B'))
+        data_formatada = f"Bauru, {data_atual.day} de {mes_pt} de {data_atual.year}"
+
+        data_paragraph = doc.add_paragraph()
+        data_paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+        data_paragraph.add_run(data_formatada)
+
+        doc.add_paragraph()  # Espaço antes da assinatura
+
+        # Busca cliente para informações da assinatura
+        cliente = Cliente.query.filter_by(razao_social=recibo.cliente_nome).first()
+
+        # Adiciona assinatura
+        assinatura_paragraph = doc.add_paragraph()
+        assinatura_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        assinatura_paragraph.add_run("_" * 50 + "\n")
+        assinatura_paragraph.add_run(cliente.razao_social.upper() + "\n")
+        assinatura_paragraph.add_run(cliente.cpf_cnpj)
+
         # Salva o documento
         doc_buffer = io.BytesIO()
         doc.save(doc_buffer)
         doc_buffer.seek(0)
-    
-        # Atualiza no banco
+
+        # Atualiza no banco de dados
         recibo.documento_blob = doc_buffer.getvalue()
         db.session.commit()
-    
-        print("Recibo atualizado com sucesso")
-    
-        return jsonify({
-            'status': 'sucesso',
-            'mensagem': 'Recibo atualizado com sucesso'
-        })
-    
+
+        print("Recibo atualizado com sucesso no banco de dados")
+
+        return jsonify({'status': 'sucesso', 'mensagem': 'Recibo atualizado com sucesso'})
+
     except Exception as e:
-        print(f"Erro na atualização: {str(e)}")
+        print(f"Erro ao atualizar recibo: {str(e)}")
         import traceback
         print(traceback.format_exc())
-        return jsonify({
-            'status': 'erro',
-            'mensagem': str(e)
-        }), 500
-        
+        return jsonify({'status': 'erro', 'mensagem': str(e)}), 500
+    
 def init_db():    
-    with app.app_context():
-        # Criar tabelas se não existirem
+    with app.app_context():        # Criar tabelas se não existirem
         db.create_all()        
         # Criar modelos padrão se não existirem
         if not ModeloRecibo.query.first():
@@ -680,7 +696,3 @@ if __name__ == '__main__':
     with app.app_context():
         init_db()
     app.run(debug=True)
-
-
-
-
