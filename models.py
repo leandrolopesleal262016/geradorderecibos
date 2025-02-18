@@ -26,3 +26,10 @@ class ModeloRecibo(db.Model):
     conteudo = db.Column(db.Text, nullable=False)
     data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
     data_atualizacao = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+class Cliente(db.Model):
+    __tablename__ = 'clientes'
+    id = db.Column(db.Integer, primary_key=True)
+    razao_social = db.Column(db.String(200), nullable=False)
+    cpf_cnpj = db.Column(db.String(20), nullable=False, unique=True)
+    tipo = db.Column(db.String(10), nullable=False)  # 'empresa' or 'pessoa'
