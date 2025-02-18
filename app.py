@@ -9,7 +9,7 @@ import os
 import zipfile
 import locale
 from datetime import datetime
-from models import db, ReceiptSequence, ReciboGerado, ModeloRecibo
+from models import db, ReceiptSequence, ReciboGerado, ModeloRecibo, Cliente
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///recibos.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
@@ -188,46 +188,23 @@ def index():
 
 @app.route('/get_clientes', methods=['GET'])
 def get_clientes():
-    global fornecedores_df
     try:
-        if fornecedores_df is None:
-            print("Carregando CSV...")
-            fornecedores_df = pd.read_csv('Fornecedores.csv', sep=';', encoding='windows-1252', skiprows=4)
-            
-        print("Dados do DataFrame:")
-        print(f"Total de registros: {len(fornecedores_df)}")
-        print(f"Colunas: {fornecedores_df.columns.tolist()}")
+        # Busca empresas e pessoas do banco de dados
+        empresas = Cliente.query.filter_by(tipo='empresa').order_by(Cliente.razao_social).all()
+        pessoas = Cliente.query.filter_by(tipo='pessoa').order_by(Cliente.razao_social).all()
         
-        # Filtragem e processamento
-        fornecedores_df['CPF/CNPJ'] = fornecedores_df['CPF/CNPJ'].astype(str).str.replace(r'\D', '', regex=True)
-        
-        # Log dos documentos
-        print("\nAmostra de CPF/CNPJ:")
-        print(fornecedores_df['CPF/CNPJ'].head())
-        
-        empresas_df = fornecedores_df[fornecedores_df['CPF/CNPJ'].str.len() > 11]
-        pessoas_df = fornecedores_df[fornecedores_df['CPF/CNPJ'].str.len() == 11]
-        
-        empresas = empresas_df['Razão social'].dropna().tolist()
-        pessoas = pessoas_df['Razão social'].dropna().tolist()
-        
-        print("\nDetalhes da separação:")
-        print(f"Empresas encontradas: {len(empresas)}")
-        print(f"Pessoas encontradas: {len(pessoas)}")
-        print("\nPessoas físicas identificadas:")
-        for pessoa in pessoas:
-            print(f"- {pessoa}")
-            
         response_data = {
-            'empresas': empresas,
-            'pessoas': pessoas
+            'empresas': [empresa.razao_social for empresa in empresas],
+            'pessoas': [pessoa.razao_social for pessoa in pessoas]
         }
+        
+        print(f"Total de empresas encontradas: {len(response_data['empresas'])}")
+        print(f"Total de pessoas encontradas: {len(response_data['pessoas'])}")
+        
         return jsonify(response_data)
         
     except Exception as e:
-        print(f"Erro detalhado: {str(e)}")
-        import traceback
-        print(f"Traceback: {traceback.format_exc()}")
+        print(f"Erro ao buscar clientes: {str(e)}")
         return jsonify({'error': str(e)}), 500
     
 @app.route('/generate_receipts_bulk', methods=['POST'])
@@ -238,100 +215,94 @@ def generate_receipts_bulk():
         modelo_selecionado = dados.get('modelo')
         clientes_selecionados = dados.get('clientes', [])
 
-        # Obter e formatar a data atual
         data_atual = datetime.now()
         data_formatada = data_atual.strftime('%d/%m/%Y')
 
-        # Converter valor para formato correto
         valor_str = dados.get('valor', '0,00')
         valor_limpo = valor_str.replace('.', '').replace(',', '.')
         valor_float = float(valor_limpo)
-    
-        # Formata o valor para exibição
         valor_formatado = f"{valor_float:,.2f}".replace(',', '_').replace('.', ',').replace('_', '.')
 
         documentos_gerados = []
         preview_content = []
 
-        # Recupera e atualiza o modelo do texto
         modelo_texto = request.json.get('modeloConteudo')
         modelo_texto = modelo_texto.replace('{numero_documento}', '{numero_recibo}')
 
         for cliente_nome in clientes_selecionados:
             numero_recibo = get_next_receipt_number()
 
-            cliente_filtrado = fornecedores_df[fornecedores_df['Razão social'] == cliente_nome]
-            if cliente_filtrado.empty:
+            # Busca cliente no banco de dados
+            cliente = Cliente.query.filter_by(razao_social=cliente_nome).first()
+            if not cliente:
                 continue
 
-            cliente_data = cliente_filtrado.iloc[0].to_dict()
-            documento_cliente = cliente_data.get('CPF/CNPJ', '')
-
             texto_formatado = modelo_texto.format(
-                cliente_nome=cliente_nome,
+                cliente_nome=cliente.razao_social,
                 valor=valor_formatado,
                 valor_extenso=valor_por_extenso(valor_float),
                 numero_recibo=numero_recibo,
                 data=data_formatada,
-                documento_cliente=documento_cliente
+                documento_cliente=cliente.cpf_cnpj
             )
-        doc = Document()
-        # Configuração das margens
-        sections = doc.sections
-        for section in sections:
-            section.left_margin = Inches(1)
-            section.right_margin = Inches(1)
-        # Ajuste das colunas e formatação do texto
-        header_table = doc.add_table(rows=1, cols=2)
-        header_table.autofit = False
-        header_table.columns[0].width = Inches(1.2)  # Coluna do logo 40% menor
-        header_table.columns[1].width = Inches(5.8)  # Coluna do texto maior
 
-        # Logo
-        logo_cell = header_table.cell(0, 0)
-        logo_paragraph = logo_cell.paragraphs[0]
-        logo_run = logo_paragraph.add_run()
-        logo_run.add_picture('static/images/logo.png', width=Inches(1.2))
+            # Criação do documento Word
+            doc = Document()
+            # Configuração das margens
+            sections = doc.sections
+            for section in sections:
+                section.left_margin = Inches(1)
+                section.right_margin = Inches(1)
+            # Ajuste das colunas e formatação do texto
+            header_table = doc.add_table(rows=1, cols=2)
+            header_table.autofit = False
+            header_table.columns[0].width = Inches(1.2)  # Coluna do logo 40% menor
+            header_table.columns[1].width = Inches(5.8)  # Coluna do texto maior
 
-        # Texto da empresa em cinza
-        info_cell = header_table.cell(0, 1)
-        info_paragraph = info_cell.paragraphs[0]
-        info_run = info_paragraph.add_run("BEIJO E MATOS CONSTRUÇÕES E ENGENHARIA LTDA\nJoaquim da Silva Martha, 12-53 - Sala 3 - Altos da Cidade - Bauru/SP\nguilhermebeijo@bencato.com.br - CNPJ: 26.149.105/0001-09 - www.bencato.com.br")
-        info_run.font.color.rgb = RGBColor(128, 128, 128)  # Cor cinza
-        info_run.font.size = Pt(11)
+            # Logo
+            logo_cell = header_table.cell(0, 0)
+            logo_paragraph = logo_cell.paragraphs[0]
+            logo_run = logo_paragraph.add_run()
+            logo_run.add_picture('static/images/logo.png', width=Inches(1.2))
 
-        doc.add_paragraph()  # Espaço após o cabeçalho
+            # Texto da empresa em cinza
+            info_cell = header_table.cell(0, 1)
+            info_paragraph = info_cell.paragraphs[0]
+            info_run = info_paragraph.add_run("BEIJO E MATOS CONSTRUÇÕES E ENGENHARIA LTDA\nJoaquim da Silva Martha, 12-53 - Sala 3 - Altos da Cidade - Bauru/SP\nguilhermebeijo@bencato.com.br - CNPJ: 26.149.105/0001-09 - www.bencato.com.br")
+            info_run.font.color.rgb = RGBColor(128, 128, 128)  # Cor cinza
+            info_run.font.size = Pt(11)
 
-        # Divide o texto em linhas para o documento
-        linhas_recibo = texto_formatado.split('\n')
+            doc.add_paragraph()  # Espaço após o cabeçalho
 
-        # Adiciona as linhas do recibo ao documento
-        for linha in linhas_recibo:
-            p = doc.add_paragraph()
-            p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-            p.add_run(linha)
+            # Divide o texto em linhas para o documento
+            linhas_recibo = texto_formatado.split('\n')
 
-        doc.add_paragraph()  # Espaço antes da data
+            # Adiciona as linhas do recibo ao documento
+            for linha in linhas_recibo:
+                p = doc.add_paragraph()
+                p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+                p.add_run(linha)
 
-        # Data em português
-        data_atual = datetime.now()
-        mes_pt = traduzir_mes(data_atual.strftime('%B'))
-        data_formatada = f"Bauru, {data_atual.day} de {mes_pt} de {data_atual.year}"
+            doc.add_paragraph()  # Espaço antes da data
 
-        # Data com espaço adicional
-        data_paragraph = doc.add_paragraph()
-        data_paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-        data_paragraph.add_run(data_formatada)
+            # Data em português
+            data_atual = datetime.now()
+            mes_pt = traduzir_mes(data_atual.strftime('%B'))
+            data_formatada = f"Bauru, {data_atual.day} de {mes_pt} de {data_atual.year}"
 
-        # Adiciona um enter após a data
-        doc.add_paragraph()
-        # Assinatura centralizada
-        assinatura_paragraph = doc.add_paragraph()
-        assinatura_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        assinatura_paragraph.add_run("_" * 50 + "\n")
-        assinatura_paragraph.add_run(cliente_nome.upper() + "\n")
-        assinatura_paragraph.add_run(str(cliente_data.get('CPF/CNPJ', '')))
+            # Data com espaço adicional
+            data_paragraph = doc.add_paragraph()
+            data_paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+            data_paragraph.add_run(data_formatada)
 
+            # Adiciona um enter após a data
+            doc.add_paragraph()
+            # Assinatura atualizada usando dados do modelo Cliente
+            assinatura_paragraph = doc.add_paragraph()
+            assinatura_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            assinatura_paragraph.add_run("_" * 50 + "\n")
+            assinatura_paragraph.add_run(cliente.razao_social.upper() + "\n")
+            assinatura_paragraph.add_run(cliente.cpf_cnpj)
         # Salvar no banco
         doc_buffer = io.BytesIO()
         doc.save(doc_buffer)
@@ -473,6 +444,48 @@ def atualizar_modelo(modelo_id):
     modelo.conteudo = dados['conteudo']
     db.session.commit()
     return jsonify({'message': 'Modelo atualizado com sucesso'})
+
+@app.route('/add_cliente', methods=['POST'])
+def add_cliente():
+    try:
+        data = request.json
+        
+        # Verifica se já existe cliente com este documento
+        cliente_existente = Cliente.query.filter_by(cpf_cnpj=data['cpf_cnpj']).first()
+        if cliente_existente:
+            return jsonify({'error': 'CPF/CNPJ já cadastrado'}), 400
+            
+        novo_cliente = Cliente(
+            razao_social=data['razao_social'],
+            cpf_cnpj=data['cpf_cnpj'],
+            tipo=data['tipo']
+        )
+        
+        db.session.add(novo_cliente)
+        db.session.commit()
+        
+        return jsonify({'message': 'Cliente cadastrado com sucesso'}), 201
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/consulta_clientes')
+def consulta_clientes():
+    clientes = Cliente.query.order_by(Cliente.razao_social).all()
+    return render_template('consulta_clientes.html', clientes=clientes)
+
+@app.route('/delete_cliente/<int:cliente_id>', methods=['DELETE'])
+def delete_cliente(cliente_id):
+    try:
+        cliente = Cliente.query.get_or_404(cliente_id)
+        db.session.delete(cliente)
+        db.session.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)})
+
 
 def init_db():    
     with app.app_context():

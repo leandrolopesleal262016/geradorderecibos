@@ -67,6 +67,9 @@
                 <a href="/consulta_recibos" class="btn btn-light">
                     <i class="bi bi-search"></i> Consultar Recibos
                 </a>
+                <a href="/consulta_clientes" class="btn btn-light ms-2">
+                    <i class="bi bi-people"></i> Consultar Clientes
+                </a>
             </div>
         </div>
     </nav>
@@ -153,6 +156,15 @@
     </div>
 </div>
 
+<!-- Botão Novo Cliente -->
+<div class="row mb-4">
+    <div class="col-12">
+        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#novoClienteModal">
+            <i class="bi bi-person-plus"></i> Novo Cliente
+        </button>
+    </div>
+</div>
+
 <!-- Seleção de Clientes -->
 <div class="row mb-4">
     <div class="col-md-6">
@@ -195,6 +207,42 @@
         </div>
     </div>
 </div>
+
+<!-- Modal de Cadastro de Cliente -->
+<div class="modal fade" id="novoClienteModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Cadastrar Novo Cliente</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="formNovoCliente">
+                    <div class="mb-3">
+                        <label for="razaoSocial" class="form-label">Razão Social/Nome</label>
+                        <input type="text" class="form-control" id="razaoSocial" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="cpfCnpj" class="form-label">CPF/CNPJ</label>
+                        <input type="text" class="form-control" id="cpfCnpj" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="tipoCliente" class="form-label">Tipo</label>
+                        <select class="form-control" id="tipoCliente" required>
+                            <option value="pessoa">Pessoa Física</option>
+                            <option value="empresa">Pessoa Jurídica</option>
+                        </select>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-primary" id="salvarCliente">Salvar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 
 <!-- Modal de Edição de Modelo -->
 <div class="modal fade" id="modeloEditModal" tabindex="-1">
@@ -546,7 +594,95 @@
                   $(this).val(formatarValor(valorAtual));
               }
           });
-      });</script>  
+      }); 
+
+    // Função para formatar CPF/CNPJ
+    function formatarDocumento(documento) {
+        // Remove caracteres não numéricos
+        documento = documento.replace(/\D/g, '');
+        
+        if (documento.length <= 11) {
+            // Formato CPF: 000.000.000-00
+            return documento.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/g, "$1.$2.$3-$4");
+        } else {
+            // Formato CNPJ: 00.000.000/0000-00
+            return documento.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/g, "$1.$2.$3/$4-$5");
+        }
+    }
+
+    // Máscara para CPF/CNPJ
+    $('#cpfCnpj').on('input', function() {
+        $(this).val(formatarDocumento($(this).val()));
+    });
+
+    // Salvar novo cliente
+    $('#salvarCliente').click(function() {
+        const razaoSocial = $('#razaoSocial').val();
+        const cpfCnpj = $('#cpfCnpj').val().replace(/\D/g, '');
+        const tipo = $('#tipoCliente').val();
+
+        if (!razaoSocial || !cpfCnpj) {
+            alert('Preencha todos os campos!');
+            return;
+        }
+
+        fetch('/add_cliente', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                razao_social: razaoSocial,
+                cpf_cnpj: cpfCnpj,
+                tipo: tipo
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                alert(data.error);
+            } else {
+                alert('Cliente cadastrado com sucesso!');
+                $('#novoClienteModal').modal('hide');
+                
+                // Limpa os campos do formulário
+                $('#razaoSocial').val('');
+                $('#cpfCnpj').val('');
+                
+                // Atualiza as listas de clientes
+                fetch('/get_clientes')
+                    .then(response => response.json())
+                    .then(data => {
+                        const empresasSelect = $('#empresas');
+                        const pessoasSelect = $('#pessoas');
+                        
+                        // Limpa os selects
+                        empresasSelect.empty();
+                        pessoasSelect.empty();
+                        
+                        // Adiciona as empresas atualizadas
+                        data.empresas.forEach(empresa => {
+                            empresasSelect.append(new Option(empresa, empresa));
+                        });
+                        
+                        // Adiciona as pessoas físicas atualizadas
+                        data.pessoas.forEach(pessoa => {
+                            pessoasSelect.append(new Option(pessoa, pessoa));
+                        });
+                        
+                        // Atualiza os selects
+                        empresasSelect.trigger('change');
+                        pessoasSelect.trigger('change');
+                    });
+            }
+        })
+        .catch(error => {
+            alert('Erro ao cadastrar cliente');
+            console.error('Erro:', error);
+        });
+    });
+</script>
+
    
 <footer class="bg-light py-3 text-center mt-5">
     <p class="mb-0">Desenvolvido por Leandro Leal - 2025</p>
