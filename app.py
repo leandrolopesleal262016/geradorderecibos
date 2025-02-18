@@ -10,15 +10,28 @@ import zipfile
 import locale
 from datetime import datetime
 from models import db, ReceiptSequence, ReciboGerado, ModeloRecibo, Cliente
+
+# Create Flask app first
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///recibos.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db.init_app(app)
 
+# Define helper function
+def get_document_content(blob):
+    doc = Document(io.BytesIO(blob))
+    conteudo = []
+    for paragrafo in doc.paragraphs:
+        if paragrafo.text.strip():
+            conteudo.append(paragrafo.text.strip())
+    return conteudo
+
+# Register function in Jinja environment
+app.jinja_env.globals.update(get_document_content=get_document_content)
+
 data_atual = datetime.now().strftime('%d/%m/%Y')
 fornecedores_df = None
 documentos_gerados = []  # Declaração global
-
 def traduzir_mes(mes_en):
     meses = {
         'January': 'janeiro',
@@ -485,8 +498,83 @@ def delete_cliente(cliente_id):
     except Exception as e:
         db.session.rollback()
         return jsonify({'success': False, 'error': str(e)})
-
-
+    
+@app.route('/atualizar_recibo', methods=['POST'])
+def atualizar_recibo():
+    print("Iniciando atualização do recibo")
+    try:
+        dados = request.json
+        recibo_id = dados.get('recibo_id')
+        conteudo_novo = dados.get('conteudo')
+    
+        print(f"Recibo ID: {recibo_id}")
+        print(f"Novo conteúdo: {conteudo_novo}")
+    
+        recibo = ReciboGerado.query.get_or_404(recibo_id)
+    
+        # Cria novo documento
+        doc = Document()
+    
+        # Configurações do documento
+        sections = doc.sections
+        for section in sections:
+            section.left_margin = Inches(1)
+            section.right_margin = Inches(1)
+    
+        # Adiciona cabeçalho
+        header_table = doc.add_table(rows=1, cols=2)
+        header_table.autofit = False
+        header_table.columns[0].width = Inches(1.2)
+        header_table.columns[1].width = Inches(5.8)
+    
+        # Logo
+        logo_cell = header_table.cell(0, 0)
+        logo_run = logo_cell.paragraphs[0].add_run()
+        logo_run.add_picture('static/images/logo.png', width=Inches(1.2))
+    
+        # Informações da empresa
+        info_cell = header_table.cell(0, 1)
+        info_run = info_cell.paragraphs[0].add_run()
+        info_run.text = "BEIJO E MATOS CONSTRUÇÕES E ENGENHARIA LTDA\n"
+        info_run.text += "Joaquim da Silva Martha, 12-53 - Sala 3 - Altos da Cidade - Bauru/SP\n"
+        info_run.text += "guilhermebeijo@bencato.com.br - CNPJ: 26.149.105/0001-09 - www.bencato.com.br"
+        info_run.font.color.rgb = RGBColor(128, 128, 128)
+        info_run.font.size = Pt(11)
+    
+        # Adiciona conteúdo atualizado
+        doc.add_paragraph()  # Espaço após cabeçalho
+    
+        for linha in conteudo_novo:
+            if linha.strip():
+                p = doc.add_paragraph()
+                p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+                p.add_run(linha.strip())
+    
+        # Salva o documento
+        doc_buffer = io.BytesIO()
+        doc.save(doc_buffer)
+        doc_buffer.seek(0)
+    
+        # Atualiza no banco
+        recibo.documento_blob = doc_buffer.getvalue()
+        db.session.commit()
+    
+        print("Recibo atualizado com sucesso")
+    
+        return jsonify({
+            'status': 'sucesso',
+            'mensagem': 'Recibo atualizado com sucesso'
+        })
+    
+    except Exception as e:
+        print(f"Erro na atualização: {str(e)}")
+        import traceback
+        print(traceback.format_exc())
+        return jsonify({
+            'status': 'erro',
+            'mensagem': str(e)
+        }), 500
+        
 def init_db():    
     with app.app_context():
         # Criar tabelas se não existirem
@@ -511,6 +599,50 @@ def init_db():
                 db.session.add(ModeloRecibo(**modelo))
             db.session.commit()
 
+from flask import abort
+from docx import Document
+import io
+import json
+
+@app.route('/debug_recibo/<int:recibo_id>')
+def debug_recibo(recibo_id):
+    try:
+        print(f"Buscando recibo ID: {recibo_id}")
+        recibo = ReciboGerado.query.get(recibo_id)
+        
+        if not recibo:
+            print(f"Recibo {recibo_id} não encontrado")
+            return jsonify({'erro': f'Recibo {recibo_id} não encontrado'}), 404
+            
+        print(f"Recibo encontrado: {recibo.numero_recibo}")
+        
+        # Lê o documento Word
+        doc = Document(io.BytesIO(recibo.documento_blob))
+        
+        # Extrai conteúdo
+        conteudo = []
+        for paragrafo in doc.paragraphs:
+            texto = paragrafo.text.strip()
+            if texto:
+                conteudo.append(texto)
+                print(f"Parágrafo encontrado: {texto}")
+        
+        dados = {
+            'id': recibo.id,
+            'numero_recibo': recibo.numero_recibo,
+            'cliente_nome': recibo.cliente_nome,
+            'valor': str(recibo.valor),
+            'data_geracao': recibo.data_geracao.strftime('%d/%m/%Y %H:%M'),
+            'conteudo': conteudo
+        }
+        
+        print("Dados do recibo:", json.dumps(dados, indent=2))
+        return jsonify(dados)
+        
+    except Exception as e:
+        print(f"Erro ao debugar recibo: {str(e)}")
+        return jsonify({'erro': str(e)}), 500
+    
 if __name__ == '__main__':
     with app.app_context():
         init_db()

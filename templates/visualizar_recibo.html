@@ -47,7 +47,6 @@
             <div class="recibo-header">
                 <h2>Recibo #{{ recibo.numero_recibo }}</h2>
             </div>
-            
             <div class="recibo-info">
                 <div class="row mb-3">
                     <div class="col-md-6">
@@ -62,8 +61,19 @@
                         <p class="valor"><strong>Valor:</strong> R$ {{ "%.2f"|format(recibo.valor)|replace(".", ",") }}</p>
                     </div>
                 </div>
-            </div>
 
+                <!-- Conteúdo do Recibo -->
+                <div class="row mb-3">
+                    <div class="col-md-12">
+                        <div id="conteudo-recibo">
+                            {% set doc = get_document_content(recibo.documento_blob) %}
+                            {% for linha in doc %}
+                                <p class="linha-recibo" data-linha-id="{{ loop.index }}">{{ linha }}</p>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+            </div>
             <div class="card">
                 <div class="card-body">
                     <h5 class="card-title">Ações</h5>
@@ -77,7 +87,50 @@
             </div>
         </div>
     </div>
+      <script>
+    $('.editar-recibo').click(function() {
+        console.log("Iniciando edição");
+        $('#conteudo-recibo .linha-recibo').attr('contenteditable', 'true');
+        $('.actions-edit').show();
+        $(this).hide();
+    });
 
+    $('.salvar-recibo').click(function() {
+        console.log("Iniciando salvamento");
+        const reciboId = {{ recibo.id }};
+        const linhasEditadas = [];
+        
+        $('#conteudo-recibo .linha-recibo').each(function() {
+            linhasEditadas.push($(this).text().trim());
+        });
+        
+        console.log("Conteúdo capturado:", linhasEditadas);
+
+        fetch('/atualizar_recibo', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                recibo_id: reciboId,
+                conteudo: linhasEditadas
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if(data.status === 'sucesso') {
+                alert('Recibo atualizado com sucesso!');
+                window.location.reload();
+            } else {
+                throw new Error(data.mensagem);
+            }
+        })
+        .catch(error => {
+            console.error("Erro:", error);
+            alert('Erro ao salvar as alterações: ' + error.message);
+        });
+    });
+</script>
     <!-- Bootstrap JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
