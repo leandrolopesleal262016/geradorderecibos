@@ -167,10 +167,7 @@
         <label for="valor" class="form-label">Valor (R$):</label>
         <input type="text" id="valor" class="form-control" placeholder="0,00">
     </div>
-    <div class="col-md-4">
-        <label for="numero_documento" class="form-label">Número do Documento:</label>
-        <input type="text" id="numero_documento" class="form-control">
-    </div>
+   
     <div class="col-md-4">
         <label for="data" class="form-label">Data:</label>
         <input type="date" id="data" class="form-control" value="<?php echo date('Y-m-d'); ?>">
@@ -278,23 +275,22 @@
         let modelos = {
             1: {
                 nome: "Modelo Emitente",
-                conteudo: `RECIBO Nº {numero_documento} - parcela única     VALOR: R$ {valor}
-                ADMINISTRATIVO - {cliente_nome}
-                Recebi(emos) a quantia de R$ {valor} ({valor_extenso}) na forma de pagamento Conciliação, correspondente a VALE ALIMENTAÇÃO (documento número {numero_documento} parcela única) e para maior clareza firmo(amos) o presente.`
-                            },
-                            2: {
-                                nome: "Modelo Destinatário",
-                                conteudo: `RECIBO Nº {numero_documento} - parcela única     VALOR: R$ {valor}
-                {cliente_nome}
-                Recebemos de BENCATO CONSTRUCOES LTDA a quantia de R$ {valor} ({valor_extenso}) na forma de pagamento Conciliação, correspondente a PARCELA ADM OBRA - CONFORME CONTRATO (documento número {numero_documento} parcela única) e para maior clareza firmo(amos) o presente.`
-                            },
-                            3: {
-                                nome: "Modelo Personalizado",
-                                conteudo: `RECIBO Nº {numero_documento}
-                Valor: R$ {valor}
-                Cliente: {cliente_nome}
-                Texto personalizado aqui...`
-                            }
+                conteudo: `RECIBO Nº {numero_recibo} - parcela única     VALOR: R$ {valor}
+        ADMINISTRATIVO - {cliente_nome}
+        Recebi(emos) a quantia de R$ {valor} ({valor_extenso}) na forma de pagamento Conciliação...`
+            },
+            2: {
+                nome: "Modelo Destinatário",
+                conteudo: `RECIBO Nº {numero_recibo} - parcela única     VALOR: R$ {valor}
+        {cliente_nome}
+        Recebemos de BENCATO CONSTRUCOES LTDA a quantia de R$ {valor} ({valor_extenso})...`
+            },
+            3: {
+                nome: "Modelo Personalizado",
+                conteudo: `RECIBO Nº {numero_recibo}
+        Valor: R$ {valor}
+        Cliente: {cliente_nome}...`
+            }
         };
 
         // Carregar modelos do localStorage, se existirem
@@ -400,12 +396,7 @@
                     alert('Por favor, insira um valor.');
                     return;
                 }
-
-                if (!numero_documento) {
-                    alert('Por favor, insira um número de documento.');
-                    return;
-                }
-
+               
                 fetch('/generate_receipts_bulk', {
                     method: 'POST',
                     headers: {
@@ -533,8 +524,7 @@
                   $(this).val(formatarValor(valorAtual));
               }
           });
-      });
-</script>  
+      });</script>  
    
 <footer class="bg-light py-3 text-center mt-5">
     <p class="mb-0">Desenvolvido por Leandro Leal - 2025</p>
