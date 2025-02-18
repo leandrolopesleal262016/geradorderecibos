@@ -383,33 +383,36 @@
                       const modeloId = $('#modeloEditModal').data('modelo-id');
                       const nome = $('#modeloNome').val();
                       const conteudo = $('#modeloConteudo').val();
-            
-                      const dados = {
-                          nome: nome,
-                          conteudo: conteudo
-                      };
-            
-                      const method = modeloId ? 'PUT' : 'POST';
-                      const url = modeloId ? `/modelos/${modeloId}` : '/modelos';
-            
-                      fetch(url, {
-                          method: method,
+                      
+                      console.log("Salvando modelo:", modeloId);
+                      
+                      fetch('/salvar_modelo', {
+                          method: 'POST',
                           headers: {
                               'Content-Type': 'application/json',
                           },
-                          body: JSON.stringify(dados)
+                          body: JSON.stringify({
+                              modelo_id: modeloId,
+                              nome: nome,
+                              conteudo: conteudo
+                          })
                       })
                       .then(response => response.json())
                       .then(data => {
-                          atualizarPreviewModelo({
-                              id: modeloId || data.id,
-                              nome: nome,
-                              conteudo: conteudo
-                          });
-                          $('#modeloEditModal').modal('hide');
+                          if(data.status === 'sucesso') {
+                              alert('Modelo salvo com sucesso!');
+                              $('#modeloEditModal').modal('hide');
+                              // Atualiza preview do modelo
+                              $(`.modelo-recibo[data-modelo="${modeloId}"] .modelo-preview`).html(formatarPreview(conteudo));
+                          } else {
+                              throw new Error(data.erro);
+                          }
+                      })
+                      .catch(error => {
+                          console.error("Erro:", error);
+                          alert('Erro ao salvar modelo: ' + error.message);
                       });
                   });
-
                   function atualizarPreviewModelo(modelo) {
                       const modeloCard = $(`.modelo-recibo[data-modelo="${modelo.id}"]`);
                       modeloCard.find('.card-header h5').text(modelo.nome);

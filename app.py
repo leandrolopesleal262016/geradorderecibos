@@ -225,8 +225,16 @@ def generate_receipts_bulk():
     global documentos_gerados
     try:
         dados = request.json
-        modelo_selecionado = dados.get('modelo')
+        modelo_id = dados.get('modelo')
         clientes_selecionados = dados.get('clientes', [])
+
+        # Busca modelo no banco
+        modelo = ModeloRecibo.query.get(modelo_id)
+        if not modelo:
+            return jsonify({'erro': 'Modelo não encontrado'}), 404
+            
+        print(f"Usando modelo {modelo_id}: {modelo.nome}")
+        modelo_texto = modelo.conteudo
 
         data_atual = datetime.now()
         data_formatada = data_atual.strftime('%d/%m/%Y')
@@ -238,9 +246,6 @@ def generate_receipts_bulk():
 
         documentos_gerados = []
         preview_content = []
-
-        modelo_texto = request.json.get('modeloConteudo')
-        modelo_texto = modelo_texto.replace('{numero_documento}', '{numero_recibo}')
 
         for cliente_nome in clientes_selecionados:
             numero_recibo = get_next_receipt_number()
@@ -261,16 +266,15 @@ def generate_receipts_bulk():
 
             # Criação do documento Word
             doc = Document()
-            # Configuração das margens
             sections = doc.sections
             for section in sections:
                 section.left_margin = Inches(1)
                 section.right_margin = Inches(1)
-            # Ajuste das colunas e formatação do texto
+
             header_table = doc.add_table(rows=1, cols=2)
             header_table.autofit = False
-            header_table.columns[0].width = Inches(1.2)  # Coluna do logo 40% menor
-            header_table.columns[1].width = Inches(5.8)  # Coluna do texto maior
+            header_table.columns[0].width = Inches(1.2)
+            header_table.columns[1].width = Inches(5.8)
 
             # Logo
             logo_cell = header_table.cell(0, 0)
@@ -278,63 +282,63 @@ def generate_receipts_bulk():
             logo_run = logo_paragraph.add_run()
             logo_run.add_picture('static/images/logo.png', width=Inches(1.2))
 
-            # Texto da empresa em cinza
+            # Texto da empresa
             info_cell = header_table.cell(0, 1)
             info_paragraph = info_cell.paragraphs[0]
             info_run = info_paragraph.add_run("BEIJO E MATOS CONSTRUÇÕES E ENGENHARIA LTDA\nJoaquim da Silva Martha, 12-53 - Sala 3 - Altos da Cidade - Bauru/SP\nguilhermebeijo@bencato.com.br - CNPJ: 26.149.105/0001-09 - www.bencato.com.br")
-            info_run.font.color.rgb = RGBColor(128, 128, 128)  # Cor cinza
+            info_run.font.color.rgb = RGBColor(128, 128, 128)
             info_run.font.size = Pt(11)
 
-            doc.add_paragraph()  # Espaço após o cabeçalho
+            doc.add_paragraph()
 
-            # Divide o texto em linhas para o documento
+            # Divide o texto em linhas e adiciona ao documento
             linhas_recibo = texto_formatado.split('\n')
-
-            # Adiciona as linhas do recibo ao documento
             for linha in linhas_recibo:
-                p = doc.add_paragraph()
-                p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-                p.add_run(linha)
+                if linha.strip():
+                    p = doc.add_paragraph()
+                    p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+                    p.add_run(linha.strip())
 
-            doc.add_paragraph()  # Espaço antes da data
+            doc.add_paragraph()
 
             # Data em português
-            data_atual = datetime.now()
             mes_pt = traduzir_mes(data_atual.strftime('%B'))
-            data_formatada = f"Bauru, {data_atual.day} de {mes_pt} de {data_atual.year}"
-
-            # Data com espaço adicional
+            data_formatada_completa = f"Bauru, {data_atual.day} de {mes_pt} de {data_atual.year}"
+            
             data_paragraph = doc.add_paragraph()
             data_paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-            data_paragraph.add_run(data_formatada)
+            data_paragraph.add_run(data_formatada_completa)
 
-            # Adiciona um enter após a data
             doc.add_paragraph()
-            # Assinatura atualizada usando dados do modelo Cliente
+            
+            # Assinatura
             assinatura_paragraph = doc.add_paragraph()
             assinatura_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
             assinatura_paragraph.add_run("_" * 50 + "\n")
             assinatura_paragraph.add_run(cliente.razao_social.upper() + "\n")
             assinatura_paragraph.add_run(cliente.cpf_cnpj)
-        # Salvar no banco
-        doc_buffer = io.BytesIO()
-        doc.save(doc_buffer)
 
-        recibo = ReciboGerado(
-            numero_recibo=numero_recibo,
-            modelo_id=int(modelo_selecionado),  # Convertendo para inteiro
-            cliente_nome=cliente_nome,
-            valor=valor_float,  # Usando o valor convertido
-            documento_blob=doc_buffer.getvalue()
-        )
-        db.session.add(recibo)
-        db.session.commit()
+            # Salvar documento
+            doc_buffer = io.BytesIO()
+            doc.save(doc_buffer)
+            doc_buffer.seek(0)
 
-        documentos_gerados.append((cliente_nome, doc_buffer.getvalue()))
-        preview_content.append({
-            'nome': cliente_nome,
-            'conteudo': linhas_recibo
-        })
+            # Salvar no banco
+            recibo = ReciboGerado(
+                numero_recibo=numero_recibo,
+                modelo_id=int(modelo_id),
+                cliente_nome=cliente_nome,
+                valor=valor_float,
+                documento_blob=doc_buffer.getvalue()
+            )
+            db.session.add(recibo)
+            db.session.commit()
+
+            documentos_gerados.append((cliente_nome, doc_buffer.getvalue()))
+            preview_content.append({
+                'nome': cliente_nome,
+                'conteudo': linhas_recibo
+            })
 
         return jsonify({
             'preview': preview_content,
@@ -346,6 +350,7 @@ def generate_receipts_bulk():
         import traceback
         print(f"Traceback: {traceback.format_exc()}")
         return jsonify({'error': str(e)}), 500
+
 
 @app.route('/download_recibos', methods=['GET'])
 def download_recibos():
@@ -438,16 +443,35 @@ def listar_modelos():
         'conteudo': m.conteudo
     } for m in modelos])
 
-@app.route('/modelos', methods=['POST'])
+# Remove any other @app.route('/salvar_modelo') definitions
+
+@app.route('/salvar_modelo', methods=['POST'])
 def salvar_modelo():
-    dados = request.json
-    modelo = ModeloRecibo(
-        nome=dados['nome'],
-        conteudo=dados['conteudo']
-    )
-    db.session.add(modelo)
-    db.session.commit()
-    return jsonify({'id': modelo.id, 'message': 'Modelo salvo com sucesso'})
+    try:
+        dados = request.json
+        modelo_id = dados.get('modelo_id')
+        nome = dados.get('nome')
+        conteudo = dados.get('conteudo')
+        
+        print(f"Salvando modelo ID: {modelo_id}")
+        print(f"Conteúdo: {conteudo}")
+        
+        modelo = ModeloRecibo.query.get(modelo_id)
+        if not modelo:
+            modelo = ModeloRecibo(id=modelo_id)
+            db.session.add(modelo)
+            
+        modelo.nome = nome
+        modelo.conteudo = conteudo
+        db.session.commit()
+        
+        print(f"Modelo {modelo_id} salvo com sucesso")
+        return jsonify({'status': 'sucesso'})
+        
+    except Exception as e:
+        print(f"Erro ao salvar modelo: {str(e)}")
+        return jsonify({'erro': str(e)}), 500
+
 
 @app.route('/modelos/<int:modelo_id>', methods=['PUT'])
 def atualizar_modelo(modelo_id):
@@ -642,9 +666,21 @@ def debug_recibo(recibo_id):
     except Exception as e:
         print(f"Erro ao debugar recibo: {str(e)}")
         return jsonify({'erro': str(e)}), 500
+
+@app.route('/debug_modelos')
+def debug_modelos():
+    modelos = ModeloRecibo.query.all()
+    return jsonify([{
+        'id': m.id,
+        'nome': m.nome,
+        'conteudo': m.conteudo
+    } for m in modelos])
     
 if __name__ == '__main__':
     with app.app_context():
         init_db()
     app.run(debug=True)
+
+
+
 
