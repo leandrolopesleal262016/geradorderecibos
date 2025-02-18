@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Consulta de Recibos</title>
+    
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    
+    <!-- DataTables CSS -->
+    <link href="https://cdn.datatables.net/1.11.5/css/dataTables.bootstrap5.min.css" rel="stylesheet">
+    
+    <style>
+        .table-hover tbody tr:hover {
+            background-color: #f5f5f5;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-dark bg-primary">
+        <div class="container">
+            <span class="navbar-brand mb-0 h1">Sistema de Recibos</span>
+            <a href="/" class="btn btn-outline-light">Voltar</a>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <h2>Consulta de Recibos</h2>
+        
+        <div class="card mt-4">
+            <div class="card-body">
+                <table id="tabelaRecibos" class="table table-striped table-hover">
+                    <thead>
+                        <tr>
+                            <th>Número</th>
+                            <th>Cliente</th>
+                            <th>Valor</th>
+                            <th>Data</th>
+                            <th>Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for recibo in recibos %}
+                        <tr>
+                            <td>{{ recibo.numero_recibo }}</td>
+                            <td>{{ recibo.cliente_nome }}</td>
+                            <td>R$ {{ "%.2f"|format(recibo.valor)|replace(".", ",") }}</td>
+                            <td>{{ recibo.data_geracao.strftime('%d/%m/%Y %H:%M') }}</td>
+                            <td>
+                                <button class="btn btn-sm btn-primary visualizar-recibo" 
+                                        data-recibo-id="{{ recibo.id }}">
+                                    Visualizar
+                                </button>
+                                <button class="btn btn-sm btn-success download-recibo" 
+                                        data-recibo-id="{{ recibo.id }}">
+                                    Download
+                                </button>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.datatables.net/1.11.5/js/jquery.dataTables.min.js"></script>
+    <script src="https://cdn.datatables.net/1.11.5/js/dataTables.bootstrap5.min.js"></script>
+
+    <script>
+        $(document).ready(function() {
+            $('#tabelaRecibos').DataTable({
+                language: {
+                    url: '//cdn.datatables.net/plug-ins/1.11.5/i18n/pt-BR.json'
+                },
+                order: [[0, 'desc']]
+            });
+
+            $('.download-recibo').click(function() {
+                const reciboId = $(this).data('recibo-id');
+                window.location.href = `/download_recibo/${reciboId}`;
+            });
+
+            $('.visualizar-recibo').click(function() {
+                const reciboId = $(this).data('recibo-id');
+                window.location.href = `/visualizar_recibo/${reciboId}`;
+            });
+        });
+    </script>
+</body>
+</html>

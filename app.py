@@ -432,6 +432,26 @@ def historico_recibos():
     recibos = ReciboGerado.query.order_by(ReciboGerado.data_geracao.desc()).all()
     return render_template('historico.html', recibos=recibos)
 
+@app.route('/consulta_recibos')
+def consulta_recibos():
+    recibos = ReciboGerado.query.order_by(ReciboGerado.data_geracao.desc()).all()
+    return render_template('consulta_recibos.html', recibos=recibos)
+
+@app.route('/download_recibo/<int:recibo_id>')
+def download_recibo(recibo_id):
+    recibo = ReciboGerado.query.get_or_404(recibo_id)
+    
+    return send_file(
+        io.BytesIO(recibo.documento_blob),
+        mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        as_attachment=True,
+        download_name=f'recibo_{recibo.numero_recibo}.docx'
+    )
+
+@app.route('/visualizar_recibo/<int:recibo_id>')
+def visualizar_recibo(recibo_id):
+    recibo = ReciboGerado.query.get_or_404(recibo_id)
+    return render_template('visualizar_recibo.html', recibo=recibo)
     
 def init_db():
     print("Iniciando criação do banco...")
@@ -450,5 +470,7 @@ if __name__ == '__main__':
     with app.app_context():
         init_db()
     app.run(debug=True)
+
+
 
 
