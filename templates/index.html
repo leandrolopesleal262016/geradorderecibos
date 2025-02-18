@@ -275,98 +275,115 @@
     });
 
         let previewData = null;
-        
-        // Modelos de recibo
-        let modelos = {
-            1: {
-                nome: "Modelo Emitente",
-                conteudo: `RECIBO Nº {numero_recibo} - parcela única     VALOR: R$ {valor}
-        ADMINISTRATIVO - {cliente_nome}
-        Recebi(emos) a quantia de R$ {valor} ({valor_extenso}) na forma de pagamento Conciliação...`
-            },
-            2: {
-                nome: "Modelo Destinatário",
-                conteudo: `RECIBO Nº {numero_recibo} - parcela única     VALOR: R$ {valor}
-        {cliente_nome}
-        Recebemos de BENCATO CONSTRUCOES LTDA a quantia de R$ {valor} ({valor_extenso})...`
-            },
-            3: {
-                nome: "Modelo Personalizado",
-                conteudo: `RECIBO Nº {numero_recibo}
-        Valor: R$ {valor}
-        Cliente: {cliente_nome}...`
-            }
-        };
+                  // Modelos de recibo
+                  let modelos = {
+                      1: {
+                          nome: "Modelo Emitente",
+                          conteudo: `RECIBO Nº {numero_recibo} - parcela única     VALOR: R$ {valor}
+                  ADMINISTRATIVO - {cliente_nome}
+                  Recebi(emos) a quantia de R$ {valor} ({valor_extenso}) na forma de pagamento Conciliação...`
+                      },
+                      2: {
+                          nome: "Modelo Destinatário",
+                          conteudo: `RECIBO Nº {numero_recibo} - parcela única     VALOR: R$ {valor}
+                  {cliente_nome}
+                  Recebemos de BENCATO CONSTRUCOES LTDA a quantia de R$ {valor} ({valor_extenso})...`
+                      },
+                      3: {
+                          nome: "Modelo Personalizado",
+                          conteudo: `RECIBO Nº {numero_recibo}
+                  Valor: R$ {valor}
+                  Cliente: {cliente_nome}...`
+                      }
+                  };
 
-        // Carregar modelos do localStorage, se existirem
-        const modelosSalvos = localStorage.getItem('modelosRecibo');
-        if (modelosSalvos) {
-            modelos = JSON.parse(modelosSalvos);
-        }
+                  // Carregar modelos do banco
+                  function carregarModelos() {
+                      fetch('/modelos')
+                          .then(response => response.json())
+                          .then(modelos => {
+                              modelos.forEach(modelo => {
+                                  atualizarPreviewModelo(modelo);
+                              });
+                          });
+                  }
 
-        // Seleção de modelo
-        $('.modelo-recibo').click(function() {
-            const modeloId = $(this).data('modelo');
-            $(`#modelo${modeloId}`).prop('checked', true);
-            $('.modelo-recibo').removeClass('selected');
-            $(this).addClass('selected');
-        });
+                  // Seleção de modelo
+                  $('.modelo-recibo').click(function() {
+                      const modeloId = $(this).data('modelo');
+                      $(`#modelo${modeloId}`).prop('checked', true);
+                      $('.modelo-recibo').removeClass('selected');
+                      $(this).addClass('selected');
+                  });
 
-        // Edição de modelo
-        $('.editar-modelo').click(function(e) {
-            e.stopPropagation();
-            const modeloId = $(this).data('modelo');
-            const modelo = modelos[modeloId];
+                  // Edição de modelo
+                  $('.editar-modelo').click(function(e) {
+                      e.stopPropagation();
+                      const modeloId = $(this).data('modelo');
+                      const modelo = modelos[modeloId];
             
-            $('#modeloNome').val(modelo.nome);
-            $('#modeloConteudo').val(modelo.conteudo);
-            $('#modeloEditModal').data('modelo-id', modeloId);
+                      $('#modeloNome').val(modelo.nome);
+                      $('#modeloConteudo').val(modelo.conteudo);
+                      $('#modeloEditModal').data('modelo-id', modeloId);
             
-            const modal = new bootstrap.Modal(document.getElementById('modeloEditModal'));
-            modal.show();
-        });
+                      const modal = new bootstrap.Modal(document.getElementById('modeloEditModal'));
+                      modal.show();
+                  });
 
-        // Salvar modelo
-        $('#salvarModelo').click(function() {
-            const modeloId = $('#modeloEditModal').data('modelo-id');
-            const nome = $('#modeloNome').val();
-            const conteudo = $('#modeloConteudo').val();
+                  // Salvar modelo
+                  $('#salvarModelo').click(function() {
+                      const modeloId = $('#modeloEditModal').data('modelo-id');
+                      const nome = $('#modeloNome').val();
+                      const conteudo = $('#modeloConteudo').val();
             
-            modelos[modeloId] = {
-                nome: nome,
-                conteudo: conteudo
-            };
+                      const dados = {
+                          nome: nome,
+                          conteudo: conteudo
+                      };
             
-            // Atualizar preview do modelo
-            const modeloCard = $(`.modelo-recibo[data-modelo="${modeloId}"]`);
-            modeloCard.find('.card-header h5').text(nome);
-            modeloCard.find('.modelo-preview').html(formatarPreview(conteudo));
+                      const method = modeloId ? 'PUT' : 'POST';
+                      const url = modeloId ? `/modelos/${modeloId}` : '/modelos';
             
-            // Salvar no localStorage
-            localStorage.setItem('modelosRecibo', JSON.stringify(modelos));
-                
-                bootstrap.Modal.getInstance(document.getElementById('modeloEditModal')).hide();
-            });
+                      fetch(url, {
+                          method: method,
+                          headers: {
+                              'Content-Type': 'application/json',
+                          },
+                          body: JSON.stringify(dados)
+                      })
+                      .then(response => response.json())
+                      .then(data => {
+                          atualizarPreviewModelo({
+                              id: modeloId || data.id,
+                              nome: nome,
+                              conteudo: conteudo
+                          });
+                          $('#modeloEditModal').modal('hide');
+                      });
+                  });
 
-            // Formatar preview
-            function formatarPreview(conteudo) {
-                return conteudo
-                    .replace(/{numero_documento}/g, 'XXXXX')
-                    .replace(/{valor}/g, 'XXX,XX')
-                    .replace(/{cliente_nome}/g, 'Nome do Cliente')
-                    .replace(/{valor_extenso}/g, 'valor por extenso')
-                    .split('\n')
-                    .map(linha => `<p class="mb-1">${linha}</p>`)
-                    .join('');
-            }
+                  function atualizarPreviewModelo(modelo) {
+                      const modeloCard = $(`.modelo-recibo[data-modelo="${modelo.id}"]`);
+                      modeloCard.find('.card-header h5').text(modelo.nome);
+                      modeloCard.find('.modelo-preview').html(formatarPreview(modelo.conteudo));
+                  }
 
-            // Atualizar previews iniciais
-            Object.keys(modelos).forEach(modeloId => {
-                const modeloCard = $(`.modelo-recibo[data-modelo="${modeloId}"]`);
-                modeloCard.find('.card-header h5').text(modelos[modeloId].nome);
-                modeloCard.find('.modelo-preview').html(formatarPreview(modelos[modeloId].conteudo));
-            });
+                  // Formatar preview
+                  function formatarPreview(conteudo) {
+                      return conteudo
+                          .replace(/{numero_documento}/g, 'XXXXX')
+                          .replace(/{valor}/g, 'XXX,XX')
+                          .replace(/{cliente_nome}/g, 'Nome do Cliente')
+                          .replace(/{valor_extenso}/g, 'valor por extenso')
+                          .split('\n')
+                          .map(linha => `<p class="mb-1">${linha}</p>`)
+                          .join('');
+                  }
 
+                  // Carregar modelos ao iniciar
+                  $(document).ready(function() {
+                      carregarModelos();
+                  });
             // Selecionar todas as pessoas
             $('#selectAllPessoas').click(function() {
                 const pessoasSelect = $('#pessoas');

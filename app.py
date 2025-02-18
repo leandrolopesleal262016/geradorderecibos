@@ -9,20 +9,11 @@ import os
 import zipfile
 import locale
 from datetime import datetime
-from models import db, ReceiptSequence, ReciboGerado
-
+from models import db, ReceiptSequence, ReciboGerado, ModeloRecibo
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///recibos.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db.init_app(app)
-
-def init_db():
-    with app.app_context():
-        db.create_all()
-        if not ReceiptSequence.query.first():
-            seq = ReceiptSequence(last_number=0)
-            db.session.add(seq)
-            db.session.commit()
 
 data_atual = datetime.now().strftime('%d/%m/%Y')
 fornecedores_df = None
@@ -452,25 +443,63 @@ def download_recibo(recibo_id):
 def visualizar_recibo(recibo_id):
     recibo = ReciboGerado.query.get_or_404(recibo_id)
     return render_template('visualizar_recibo.html', recibo=recibo)
-    
-def init_db():
-    print("Iniciando criação do banco...")
+
+
+@app.route('/modelos', methods=['GET'])
+def listar_modelos():
+    modelos = ModeloRecibo.query.all()
+    return jsonify([{
+        'id': m.id,
+        'nome': m.nome,
+        'conteudo': m.conteudo
+    } for m in modelos])
+
+@app.route('/modelos', methods=['POST'])
+def salvar_modelo():
+    dados = request.json
+    modelo = ModeloRecibo(
+        nome=dados['nome'],
+        conteudo=dados['conteudo']
+    )
+    db.session.add(modelo)
+    db.session.commit()
+    return jsonify({'id': modelo.id, 'message': 'Modelo salvo com sucesso'})
+
+@app.route('/modelos/<int:modelo_id>', methods=['PUT'])
+def atualizar_modelo(modelo_id):
+    dados = request.json
+    modelo = ModeloRecibo.query.get_or_404(modelo_id)
+    modelo.nome = dados['nome']
+    modelo.conteudo = dados['conteudo']
+    db.session.commit()
+    return jsonify({'message': 'Modelo atualizado com sucesso'})
+
+def init_db():    
     with app.app_context():
-        print("Criando tabelas...")
-        db.create_all()
-        print("Verificando sequence...")
-        if not ReceiptSequence.query.first():
-            print("Criando sequence inicial...")
-            seq = ReceiptSequence(last_number=0)
-            db.session.add(seq)
+        # Criar tabelas se não existirem
+        db.create_all()        
+        # Criar modelos padrão se não existirem
+        if not ModeloRecibo.query.first():
+            modelos_padrao = [
+                {
+                    'nome': 'Modelo Emitente',
+                    'conteudo': 'RECIBO Nº {numero_recibo}...'
+                },
+                {
+                    'nome': 'Modelo Destinatário',
+                    'conteudo': 'RECIBO Nº {numero_recibo}...'
+                },
+                {
+                    'nome': 'Modelo Personalizado',
+                    'conteudo': 'RECIBO Nº {numero_recibo}...'
+                }
+            ]
+            for modelo in modelos_padrao:
+                db.session.add(ModeloRecibo(**modelo))
             db.session.commit()
-        print("Banco inicializado com sucesso!")
 
 if __name__ == '__main__':
     with app.app_context():
         init_db()
     app.run(debug=True)
-
-
-
 
