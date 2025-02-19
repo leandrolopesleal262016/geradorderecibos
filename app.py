@@ -195,30 +195,134 @@ def get_next_receipt_number():
         db.session.commit()
         return f"{seq.last_number:05d}"
     
+def is_cpf(documento):
+    # Remove caracteres não numéricos
+    doc = ''.join(filter(str.isdigit, documento))
+    # CPF normalmente tem 11 dígitos, mas vamos considerar uma margem
+    return len(doc) <= 12
+
+def is_cnpj(documento):
+    # Remove caracteres não numéricos
+    doc = ''.join(filter(str.isdigit, documento))
+    # CNPJ normalmente tem 14 dígitos
+    return len(doc) > 12
+
+def validar_cpf(cpf):
+    # Remove caracteres não numéricos
+    cpf = ''.join(filter(str.isdigit, cpf))
+    
+    # Verifica se tem 11 dígitos
+    if len(cpf) != 11:
+        return False
+        
+    # Verifica se todos os dígitos são iguais
+    if len(set(cpf)) == 1:
+        return False
+        
+    # Validação do primeiro dígito verificador
+    soma = sum(int(cpf[i]) * (10 - i) for i in range(9))
+    digito = (soma * 10) % 11
+    if digito == 10:
+        digito = 0
+    if int(cpf[9]) != digito:
+        return False
+        
+    # Validação do segundo dígito verificador
+    soma = sum(int(cpf[i]) * (11 - i) for i in range(10))
+    digito = (soma * 10) % 11
+    if digito == 10:
+        digito = 0
+    if int(cpf[10]) != digito:
+        return False
+        
+    return True
+
+def validar_cnpj(cnpj):
+    # Remove caracteres não numéricos
+    cnpj = ''.join(filter(str.isdigit, cnpj))
+    
+    # Verifica se tem 14 dígitos
+    if len(cnpj) != 14:
+        return False
+        
+    # Verifica se todos os dígitos são iguais
+    if len(set(cnpj)) == 1:
+        return False
+        
+    # Validação do primeiro dígito verificador
+    multiplicadores = [5,4,3,2,9,8,7,6,5,4,3,2]
+    soma = sum(int(cnpj[i]) * multiplicadores[i] for i in range(12))
+    digito = soma % 11
+    if digito < 2:
+        digito = 0
+    else:
+        digito = 11 - digito
+    if int(cnpj[12]) != digito:
+        return False
+        
+    # Validação do segundo dígito verificador
+    multiplicadores = [6,5,4,3,2,9,8,7,6,5,4,3,2]
+    soma = sum(int(cnpj[i]) * multiplicadores[i] for i in range(13))
+    digito = soma % 11
+    if digito < 2:
+        digito = 0
+    else:
+        digito = 11 - digito
+    if int(cnpj[13]) != digito:
+        return False
+        
+    return True
+
+    
 @app.route('/')
 def index():
     return render_template('index.html')
 
+def is_cpf(documento):
+    # Remove caracteres não numéricos
+    doc = ''.join(filter(str.isdigit, documento))
+    # CPF normalmente tem 11 dígitos, mas vamos considerar uma margem
+    return len(doc) <= 11
+
+def is_cnpj(documento):
+    # Remove caracteres não numéricos
+    doc = ''.join(filter(str.isdigit, documento))
+    # CNPJ normalmente tem 14 dígitos
+    return len(doc) > 11
+
 @app.route('/get_clientes', methods=['GET'])
 def get_clientes():
     try:
-        # Busca empresas e pessoas do banco de dados
-        empresas = Cliente.query.filter_by(tipo='empresa').order_by(Cliente.razao_social).all()
-        pessoas = Cliente.query.filter_by(tipo='pessoa').order_by(Cliente.razao_social).all()
+        # Busca todos os clientes
+        todos_clientes = Cliente.query.order_by(Cliente.razao_social).all()
+        
+        empresas = []
+        pessoas = []
+        
+        # Garante que todo cliente seja classificado
+        for cliente in todos_clientes:
+            if is_cnpj(cliente.cpf_cnpj):
+                empresas.append(cliente.razao_social)
+            else:
+                # Se não for CNPJ, considera como CPF
+                pessoas.append(cliente.razao_social)
         
         response_data = {
-            'empresas': [empresa.razao_social for empresa in empresas],
-            'pessoas': [pessoa.razao_social for pessoa in pessoas]
+            'empresas': empresas,
+            'pessoas': pessoas
         }
         
-        print(f"Total de empresas encontradas: {len(response_data['empresas'])}")
-        print(f"Total de pessoas encontradas: {len(response_data['pessoas'])}")
+        print(f"Total de empresas: {len(empresas)}")
+        print(f"Total de pessoas: {len(pessoas)}")
+        print(f"Total de clientes: {len(todos_clientes)}")
         
         return jsonify(response_data)
         
     except Exception as e:
         print(f"Erro ao buscar clientes: {str(e)}")
         return jsonify({'error': str(e)}), 500
+
+
     
 @app.route('/generate_receipts_bulk', methods=['POST'])
 def generate_receipts_bulk():
@@ -513,16 +617,28 @@ def atualizar_modelo(modelo_id):
 def add_cliente():
     try:
         data = request.json
+        documento = data['cpf_cnpj']
+        documento_limpo = ''.join(filter(str.isdigit, documento))
         
+        # Determina e valida o tipo de documento
+        if len(documento_limpo) <= 11:
+            if not validar_cpf(documento_limpo):
+                return jsonify({'error': 'CPF inválido'}), 400
+            tipo = 'pessoa'
+        else:
+            if not validar_cnpj(documento_limpo):
+                return jsonify({'error': 'CNPJ inválido'}), 400
+            tipo = 'empresa'
+            
         # Verifica se já existe cliente com este documento
-        cliente_existente = Cliente.query.filter_by(cpf_cnpj=data['cpf_cnpj']).first()
+        cliente_existente = Cliente.query.filter_by(cpf_cnpj=documento).first()
         if cliente_existente:
             return jsonify({'error': 'CPF/CNPJ já cadastrado'}), 400
             
         novo_cliente = Cliente(
             razao_social=data['razao_social'],
-            cpf_cnpj=data['cpf_cnpj'],
-            tipo=data['tipo']
+            cpf_cnpj=documento,
+            tipo=tipo
         )
         
         db.session.add(novo_cliente)
@@ -533,6 +649,9 @@ def add_cliente():
     except Exception as e:
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
+
+
+
 
 @app.route('/consulta_clientes')
 def consulta_clientes():
