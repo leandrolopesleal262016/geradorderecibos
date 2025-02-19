@@ -296,8 +296,33 @@ def generate_receipts_bulk():
             for linha in linhas_recibo:
                 if linha.strip():
                     p = doc.add_paragraph()
-                    p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-                    p.add_run(linha.strip())
+                    # Verifica se a linha contém "RECIBO Nº" e "VALOR"
+                    if "RECIBO Nº" in linha and "VALOR" in linha:
+                        p.alignment = WD_ALIGN_PARAGRAPH.LEFT  # Alinha o parágrafo à esquerda
+                        
+                        # Divide a linha em duas partes: número do recibo e valor
+                        partes = linha.split("VALOR:")
+                        
+                        # Adiciona a primeira parte (RECIBO Nº) em negrito
+                        run = p.add_run(partes[0].strip())
+                        run.bold = True
+                        
+                        # Adiciona tabulação para alinhar à direita
+                        p.add_run('\t')  # Adiciona uma tabulação
+                        
+                        # Configura a tabulação para alinhar à direita
+                        tab_stop = p.paragraph_format.tab_stops.add_tab_stop(
+                            Inches(6),  # Posição da tabulação (ajuste conforme necessário)
+                            WD_ALIGN_PARAGRAPH.RIGHT
+                        )
+                        
+                        # Adiciona "VALOR:" e o valor alinhado à direita
+                        valor_texto = f"VALOR:{partes[1].strip()}"
+                        run = p.add_run(valor_texto)
+                        run.bold = True
+                    else:
+                        p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+                        p.add_run(linha.strip())
 
             doc.add_paragraph()
 
@@ -529,6 +554,8 @@ def delete_cliente(cliente_id):
 def atualizar_recibo():
     print("Iniciando atualização do recibo")
     try:
+        from docx import Document  # Certifique-se que este import está no topo do arquivo
+        
         dados = request.json
         recibo_id = dados.get('recibo_id')
         conteudo_novo = dados.get('conteudo')
@@ -539,8 +566,10 @@ def atualizar_recibo():
         recibo = ReciboGerado.query.get_or_404(recibo_id)
         print(f"Recibo encontrado: {recibo.numero_recibo}")
 
-        # Cria novo documento Word
-        doc = Document()
+        # Criar um novo documento Word
+        doc = Document()  # Movido para cá
+        
+        # Configuração das seções e margens
         sections = doc.sections
         for section in sections:
             section.left_margin = Inches(1)
@@ -567,12 +596,39 @@ def atualizar_recibo():
 
         doc.add_paragraph()  # Espaço após cabeçalho
 
-        # Adiciona conteúdo atualizado
+        # Adiciona conteúdo atualizado com formatação específica para a linha do recibo
         for linha in conteudo_novo:
             if linha.strip():
-                p = doc.add_paragraph()
-                p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-                p.add_run(linha.strip())
+                p = doc.add_paragraph()               
+                if "RECIBO Nº" in linha and "VALOR" in linha:
+                    p.alignment = WD_ALIGN_PARAGRAPH.LEFT  # Alinha o parágrafo à esquerda
+                    
+                    # Calcula o espaço necessário para alinhar à direita
+                    espaco_total = section.page_width - section.left_margin - section.right_margin
+                    
+                    # Divide a linha em duas partes: número do recibo e valor
+                    partes = linha.split("VALOR:")
+                    
+                    # Adiciona a primeira parte (RECIBO Nº) em negrito
+                    run = p.add_run(partes[0].strip())
+                    run.bold = True
+                    
+                    # Adiciona tabulação para alinhar à direita
+                    p.add_run('\t')  # Adiciona uma tabulação
+                    
+                    # Configura a tabulação para alinhar à direita
+                    tab_stop = p.paragraph_format.tab_stops.add_tab_stop(
+                        Inches(6),  # Posição da tabulação (ajuste conforme necessário)
+                        WD_ALIGN_PARAGRAPH.RIGHT
+                    )
+                    
+                    # Adiciona "VALOR:" e o valor alinhado à direita
+                    valor_texto = f"VALOR:{partes[1].strip()}"
+                    run = p.add_run(valor_texto)
+                    run.bold = True
+                else:
+                    p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+                    p.add_run(linha.strip())
 
         doc.add_paragraph()  # Espaço antes da data
 
@@ -691,7 +747,27 @@ def debug_modelos():
         'nome': m.nome,
         'conteudo': m.conteudo
     } for m in modelos])
-    
+
+@app.route('/reset_database', methods=['POST'])
+def reset_database():
+    try:
+        with app.app_context():
+            # Deletar todos os recibos
+            ReciboGerado.query.delete()
+            
+            # Resetar o contador
+            seq = ReceiptSequence.query.first()
+            if seq:
+                seq.last_number = 0
+            else:
+                seq = ReceiptSequence(last_number=0)
+                db.session.add(seq)
+                
+            db.session.commit()
+        return jsonify({'message': 'Database resetada com sucesso'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 if __name__ == '__main__':
     with app.app_context():
         init_db()
