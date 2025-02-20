@@ -24,6 +24,8 @@ class ModeloRecibo(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     nome = db.Column(db.String(100), nullable=False)
     conteudo = db.Column(db.Text, nullable=False)
+    header_text = db.Column(db.Text)
+    logo_path = db.Column(db.String(200))
     data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
     data_atualizacao = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

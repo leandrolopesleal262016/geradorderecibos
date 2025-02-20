@@ -10,12 +10,28 @@ import zipfile
 import locale
 from datetime import datetime
 from models import db, ReceiptSequence, ReciboGerado, ModeloRecibo, Cliente
+from werkzeug.utils import secure_filename
+from flask import abort
+import json
+from PIL import Image
 
 # Create Flask app first
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///recibos.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db.init_app(app)
+
+UPLOAD_FOLDER = 'static/images/logos'
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg'}
+
+def allowed_file(filename):
+    return '.' in filename and \
+           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+# Criar pasta de upload se não existir
+if not os.path.exists(UPLOAD_FOLDER):
+    os.makedirs(UPLOAD_FOLDER)
+
 
 # Define helper function
 def get_document_content(blob):
@@ -324,6 +340,172 @@ def get_clientes():
 
 
     
+# @app.route('/generate_receipts_bulk', methods=['POST'])
+# def generate_receipts_bulk():
+#     global documentos_gerados
+#     try:
+#         dados = request.json
+#         modelo_id = dados.get('modelo')
+#         clientes_selecionados = dados.get('clientes', [])
+
+#         # Busca modelo no banco
+#         modelo = ModeloRecibo.query.get(modelo_id)
+#         if not modelo:
+#             return jsonify({'erro': 'Modelo não encontrado'}), 404
+
+            
+#         print(f"Usando modelo {modelo_id}: {modelo.nome}")
+#         modelo_texto = modelo.conteudo
+
+#         data_atual = datetime.now()
+#         data_formatada = data_atual.strftime('%d/%m/%Y')
+
+#         valor_str = dados.get('valor', '0,00')
+#         valor_limpo = valor_str.replace('.', '').replace(',', '.')
+#         valor_float = float(valor_limpo)
+#         valor_formatado = f"{valor_float:,.2f}".replace(',', '_').replace('.', ',').replace('_', '.')
+
+#         documentos_gerados = []
+#         preview_content = []
+
+#         for cliente_nome in clientes_selecionados:
+#             numero_recibo = get_next_receipt_number()
+
+#             # Busca cliente no banco de dados
+#             cliente = Cliente.query.filter_by(razao_social=cliente_nome).first()
+#             if not cliente:
+#                 continue
+
+#             texto_formatado = modelo_texto.format(
+#                 cliente_nome=cliente.razao_social,
+#                 valor=valor_formatado,
+#                 valor_extenso=valor_por_extenso(valor_float),
+#                 numero_recibo=numero_recibo,
+#                 data=data_formatada,
+#                 documento_cliente=cliente.cpf_cnpj
+#             )
+
+#             # Busca modelo no banco
+#             modelo = ModeloRecibo.query.get(modelo_id)
+#             if not modelo:
+#                 return jsonify({'erro': 'Modelo não encontrado'}), 404
+
+#             # Criação do documento Word
+#             doc = Document()
+#             sections = doc.sections
+#             for section in sections:
+#                 section.left_margin = Inches(1)
+#                 section.right_margin = Inches(1)
+
+#             # Adiciona logo personalizada se existir
+#             if modelo.logo_path and os.path.exists(modelo.logo_path):
+#                 header_table = doc.add_table(rows=1, cols=2)
+#                 header_table.autofit = False
+#                 header_table.columns[0].width = Inches(1.2)
+#                 header_table.columns[1].width = Inches(5.8)
+                
+#                 logo_cell = header_table.cell(0, 0)
+#                 logo_paragraph = logo_cell.paragraphs[0]
+#                 logo_run = logo_paragraph.add_run()
+#                 logo_run.add_picture(modelo.logo_path, width=Inches(1.2))
+                
+#                 # Adiciona texto do cabeçalho personalizado
+#                 info_cell = header_table.cell(0, 1)
+#                 info_paragraph = info_cell.paragraphs[0]
+#                 info_run = info_paragraph.add_run(modelo.header_text or "")
+#                 info_run.font.color.rgb = RGBColor(128, 128, 128)
+#                 info_run.font.size = Pt(11)
+
+#             doc.add_paragraph()
+
+#             # Divide o texto em linhas e adiciona ao documento
+#             linhas_recibo = texto_formatado.split('\n')
+#             for linha in linhas_recibo:
+#                 if linha.strip():
+#                     p = doc.add_paragraph()
+#                     # Verifica se a linha contém "RECIBO Nº" e "VALOR"
+#                     if "RECIBO Nº" in linha and "VALOR" in linha:
+#                         p.alignment = WD_ALIGN_PARAGRAPH.LEFT  # Alinha o parágrafo à esquerda
+                        
+#                         # Divide a linha em duas partes: número do recibo e valor
+#                         partes = linha.split("VALOR:")
+                        
+#                         # Adiciona a primeira parte (RECIBO Nº) em negrito
+#                         run = p.add_run(partes[0].strip())
+#                         run.bold = True
+                        
+#                         # Adiciona tabulação para alinhar à direita
+#                         p.add_run('\t')  # Adiciona uma tabulação
+                        
+#                         # Configura a tabulação para alinhar à direita
+#                         tab_stop = p.paragraph_format.tab_stops.add_tab_stop(
+#                             Inches(6),  # Posição da tabulação (ajuste conforme necessário)
+#                             WD_ALIGN_PARAGRAPH.RIGHT
+#                         )
+                        
+#                         # Adiciona "VALOR:" e o valor alinhado à direita
+#                         valor_texto = f"VALOR:{partes[1].strip()}"
+#                         run = p.add_run(valor_texto)
+#                         run.bold = True
+#                     else:
+#                         p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+#                         p.add_run(linha.strip())
+
+#             doc.add_paragraph()
+
+#             # Data em português
+#             mes_pt = traduzir_mes(data_atual.strftime('%B'))
+#             data_formatada_completa = f"Bauru, {data_atual.day} de {mes_pt} de {data_atual.year}"
+            
+#             data_paragraph = doc.add_paragraph()
+#             data_paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+#             data_paragraph.add_run(data_formatada_completa)
+
+#             doc.add_paragraph()
+            
+#             # Assinatura
+#             assinatura_paragraph = doc.add_paragraph()
+#             assinatura_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+#             assinatura_paragraph.add_run("_" * 50 + "\n")
+#             assinatura_paragraph.add_run(cliente.razao_social.upper() + "\n")
+#             assinatura_paragraph.add_run(cliente.cpf_cnpj)
+
+#             # Salvar documento
+#             doc_buffer = io.BytesIO()
+#             doc.save(doc_buffer)
+#             doc_buffer.seek(0)
+
+#             # Salvar no banco
+#             recibo = ReciboGerado(
+#                 numero_recibo=numero_recibo,
+#                 modelo_id=int(modelo_id),
+#                 cliente_nome=cliente_nome,
+#                 valor=valor_float,
+#                 documento_blob=doc_buffer.getvalue()
+#             )
+#             db.session.add(recibo)
+#             db.session.commit()
+
+#             documentos_gerados.append((cliente_nome, doc_buffer.getvalue()))
+#             preview_content.append({
+#                 'id': recibo.id,
+#                 'nome': cliente_nome,
+#                 'conteudo': linhas_recibo
+#             })
+
+#         return jsonify({
+#             'preview': preview_content,
+#             'status': 'success'
+#         })
+
+#     except Exception as e:
+#         print(f"Erro detalhado: {str(e)}")
+#         import traceback
+#         print(f"Traceback: {traceback.format_exc()}")
+#         return jsonify({'error': str(e)}), 500
+
+# Em app.py, modifique a função generate_receipts_bulk:
+
 @app.route('/generate_receipts_bulk', methods=['POST'])
 def generate_receipts_bulk():
     global documentos_gerados
@@ -375,23 +557,50 @@ def generate_receipts_bulk():
                 section.left_margin = Inches(1)
                 section.right_margin = Inches(1)
 
+            # Cabeçalho com logo e informações
             header_table = doc.add_table(rows=1, cols=2)
             header_table.autofit = False
             header_table.columns[0].width = Inches(1.2)
             header_table.columns[1].width = Inches(5.8)
 
+            # Adicione este trecho de código na função generate_receipts_bulk em app.py
+
+            # Na função generate_receipts_bulk, modifique a parte do logo assim:
             # Logo
             logo_cell = header_table.cell(0, 0)
             logo_paragraph = logo_cell.paragraphs[0]
             logo_run = logo_paragraph.add_run()
-            logo_run.add_picture('static/images/logo.png', width=Inches(1.2))
 
-            # Texto da empresa
+            print("\n=== DEBUG GERAÇÃO DE RECIBO ===")
+            print(f"Modelo ID: {modelo_id}")
+            print(f"Logo path no modelo: {modelo.logo_path}")
+
+            # Verifica e utiliza o caminho correto da logo
+            if modelo.logo_path:
+                logo_path = modelo.logo_path.lstrip('/')  # Remove a barra inicial se existir
+                if os.path.exists(logo_path):
+                    print(f"Usando logo personalizada: {logo_path}")
+                    try:
+                        logo_run.add_picture(logo_path, width=Inches(1.2))
+                        print("Logo personalizada adicionada com sucesso")
+                    except Exception as e:
+                        print(f"Erro ao adicionar logo personalizada: {str(e)}")
+                        logo_run.add_picture('static/images/logo.png', width=Inches(1.2))
+                else:
+                    print(f"Arquivo de logo não encontrado em: {logo_path}")
+                    logo_run.add_picture('static/images/logo.png', width=Inches(1.2))
+            else:
+                print("Nenhum logo_path definido, usando logo padrão")
+                logo_run.add_picture('static/images/logo.png', width=Inches(1.2))
+                               
+
+            # Texto do cabeçalho
             info_cell = header_table.cell(0, 1)
             info_paragraph = info_cell.paragraphs[0]
-            info_run = info_paragraph.add_run("BEIJO E MATOS CONSTRUÇÕES E ENGENHARIA LTDA\nJoaquim da Silva Martha, 12-53 - Sala 3 - Altos da Cidade - Bauru/SP\nguilhermebeijo@bencato.com.br - CNPJ: 26.149.105/0001-09 - www.bencato.com.br")
+            header_text = modelo.header_text if modelo.header_text else "BEIJO E MATOS CONSTRUÇÕES E ENGENHARIA LTDA\nJoaquim da Silva Martha, 12-53 - Sala 3 - Altos da Cidade - Bauru/SP\nguilhermebeijo@bencato.com.br - CNPJ: 26.149.105/0001-09 - www.bencato.com.br"
+            info_run = info_paragraph.add_run(header_text)
             info_run.font.color.rgb = RGBColor(128, 128, 128)
-            info_run.font.size = Pt(11)
+            info_run.font.size = Pt(11)            
 
             doc.add_paragraph()
 
@@ -400,27 +609,16 @@ def generate_receipts_bulk():
             for linha in linhas_recibo:
                 if linha.strip():
                     p = doc.add_paragraph()
-                    # Verifica se a linha contém "RECIBO Nº" e "VALOR"
                     if "RECIBO Nº" in linha and "VALOR" in linha:
-                        p.alignment = WD_ALIGN_PARAGRAPH.LEFT  # Alinha o parágrafo à esquerda
-                        
-                        # Divide a linha em duas partes: número do recibo e valor
+                        p.alignment = WD_ALIGN_PARAGRAPH.LEFT
                         partes = linha.split("VALOR:")
-                        
-                        # Adiciona a primeira parte (RECIBO Nº) em negrito
                         run = p.add_run(partes[0].strip())
                         run.bold = True
-                        
-                        # Adiciona tabulação para alinhar à direita
-                        p.add_run('\t')  # Adiciona uma tabulação
-                        
-                        # Configura a tabulação para alinhar à direita
+                        p.add_run('\t')
                         tab_stop = p.paragraph_format.tab_stops.add_tab_stop(
-                            Inches(6),  # Posição da tabulação (ajuste conforme necessário)
+                            Inches(6),
                             WD_ALIGN_PARAGRAPH.RIGHT
                         )
-                        
-                        # Adiciona "VALOR:" e o valor alinhado à direita
                         valor_texto = f"VALOR:{partes[1].strip()}"
                         run = p.add_run(valor_texto)
                         run.bold = True
@@ -480,7 +678,6 @@ def generate_receipts_bulk():
         import traceback
         print(f"Traceback: {traceback.format_exc()}")
         return jsonify({'error': str(e)}), 500
-
 
 
 @app.route('/download_recibos', methods=['GET'])
@@ -571,10 +768,10 @@ def listar_modelos():
     return jsonify([{
         'id': m.id,
         'nome': m.nome,
-        'conteudo': m.conteudo
+        'conteudo': m.conteudo,
+        'header_text': m.header_text,
+        'logo_path': m.logo_path.replace('\\', '/') if m.logo_path else None
     } for m in modelos])
-
-# Remove any other @app.route('/salvar_modelo') definitions
 
 @app.route('/salvar_modelo', methods=['POST'])
 def salvar_modelo():
@@ -583,9 +780,8 @@ def salvar_modelo():
         modelo_id = dados.get('modelo_id')
         nome = dados.get('nome')
         conteudo = dados.get('conteudo')
-        
-        print(f"Salvando modelo ID: {modelo_id}")
-        print(f"Conteúdo: {conteudo}")
+        header_text = dados.get('header_text')
+        logo_path = dados.get('logo_path')
         
         modelo = ModeloRecibo.query.get(modelo_id)
         if not modelo:
@@ -594,13 +790,24 @@ def salvar_modelo():
             
         modelo.nome = nome
         modelo.conteudo = conteudo
+        modelo.header_text = header_text
+        if logo_path:
+            modelo.logo_path = logo_path
+            
         db.session.commit()
         
-        print(f"Modelo {modelo_id} salvo com sucesso")
-        return jsonify({'status': 'sucesso'})
+        return jsonify({
+            'status': 'sucesso',
+            'modelo': {
+                'id': modelo.id,
+                'nome': modelo.nome,
+                'conteudo': modelo.conteudo,
+                'header_text': modelo.header_text,
+                'logo_path': modelo.logo_path
+            }
+        })
         
     except Exception as e:
-        print(f"Erro ao salvar modelo: {str(e)}")
         return jsonify({'erro': str(e)}), 500
 
 
@@ -650,9 +857,46 @@ def add_cliente():
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
 
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+
+def redimensionar_logo(arquivo, tamanho_max=(300, 100)):
+    img = Image.open(arquivo)
+    img.thumbnail(tamanho_max)
+    return img
 
 
-
+@app.route('/upload_logo', methods=['POST'])
+def upload_logo():
+    try:
+        file = request.files['logo']
+        modelo_id = request.form.get('modelo_id')
+        
+        # Criar pasta logos se não existir
+        logos_dir = 'static/images/logos'
+        os.makedirs(logos_dir, exist_ok=True)
+        
+        # Gerar nome único para o arquivo
+        filename = f'logo_modelo_{modelo_id}_{datetime.now().strftime("%Y%m%d_%H%M%S")}.png'
+        filepath = f'/{logos_dir}/{filename}'  # Adiciona a barra no início
+        
+        # Remove a barra inicial para salvar o arquivo
+        file.save(filepath[1:])  # Remove a primeira barra para salvar
+        
+        # Atualizar modelo com o caminho começando com /
+        modelo = ModeloRecibo.query.get(modelo_id)
+        if modelo:
+            modelo.logo_path = filepath  # Salva com a barra no início
+            db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'logo_path': filepath  # Retorna com a barra no início
+        })
+        
+    except Exception as e:
+        print(f"Erro no upload: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+    
 @app.route('/consulta_clientes')
 def consulta_clientes():
     clientes = Cliente.query.order_by(Cliente.razao_social).all()
@@ -673,8 +917,6 @@ def delete_cliente(cliente_id):
 def atualizar_recibo():
     print("Iniciando atualização do recibo")
     try:
-        from docx import Document  # Certifique-se que este import está no topo do arquivo
-        
         dados = request.json
         recibo_id = dados.get('recibo_id')
         conteudo_novo = dados.get('conteudo')
@@ -682,19 +924,21 @@ def atualizar_recibo():
         print(f"Recibo ID: {recibo_id}")
         print(f"Novo conteúdo recebido: {conteudo_novo}")
 
+        # Busca o recibo e o modelo associado
         recibo = ReciboGerado.query.get_or_404(recibo_id)
-        print(f"Recibo encontrado: {recibo.numero_recibo}")
-
-        # Criar um novo documento Word
-        doc = Document()  # Movido para cá
+        modelo = ModeloRecibo.query.get(recibo.modelo_id)  # Obtém o modelo associado ao recibo
         
-        # Configuração das seções e margens
+        print(f"Recibo encontrado: {recibo.numero_recibo}")
+        print(f"Modelo associado: {modelo.id if modelo else 'Nenhum'}")
+
+        # Criar um novo documento Word        
+        doc = Document()
         sections = doc.sections
         for section in sections:
             section.left_margin = Inches(1)
             section.right_margin = Inches(1)
 
-        # Adiciona cabeçalho com logo e informações da empresa
+        # Cabeçalho com logo e informações
         header_table = doc.add_table(rows=1, cols=2)
         header_table.autofit = False
         header_table.columns[0].width = Inches(1.2)
@@ -704,12 +948,25 @@ def atualizar_recibo():
         logo_cell = header_table.cell(0, 0)
         logo_paragraph = logo_cell.paragraphs[0]
         logo_run = logo_paragraph.add_run()
-        logo_run.add_picture('static/images/logo.png', width=Inches(1.2))
 
-        # Texto da empresa
+        if modelo and modelo.logo_path:
+            logo_path = modelo.logo_path.lstrip('/')  # Remove a barra inicial se existir
+            if os.path.exists(logo_path):
+                try:
+                    logo_run.add_picture(logo_path, width=Inches(1.2))
+                except Exception as e:
+                    print(f"Erro ao adicionar logo personalizada: {str(e)}")
+                    logo_run.add_picture('static/images/logo.png', width=Inches(1.2))
+            else:
+                logo_run.add_picture('static/images/logo.png', width=Inches(1.2))
+        else:
+            logo_run.add_picture('static/images/logo.png', width=Inches(1.2))
+
+        # Texto do cabeçalho
         info_cell = header_table.cell(0, 1)
         info_paragraph = info_cell.paragraphs[0]
-        info_run = info_paragraph.add_run("BEIJO E MATOS CONSTRUÇÕES E ENGENHARIA LTDA\nJoaquim da Silva Martha, 12-53 - Sala 3 - Altos da Cidade - Bauru/SP\nguilhermebeijo@bencato.com.br - CNPJ: 26.149.105/0001-09 - www.bencato.com.br")
+        header_text = modelo.header_text if (modelo and modelo.header_text) else "BEIJO E MATOS CONSTRUÇÕES E ENGENHARIA LTDA\nJoaquim da Silva Martha, 12-53 - Sala 3 - Altos da Cidade - Bauru/SP\nguilhermebeijo@bencato.com.br - CNPJ: 26.149.105/0001-09 - www.bencato.com.br"
+        info_run = info_paragraph.add_run(header_text)
         info_run.font.color.rgb = RGBColor(128, 128, 128)
         info_run.font.size = Pt(11)
 
@@ -790,34 +1047,6 @@ def atualizar_recibo():
         import traceback
         print(traceback.format_exc())
         return jsonify({'status': 'erro', 'mensagem': str(e)}), 500
-    
-def init_db():    
-    with app.app_context():        # Criar tabelas se não existirem
-        db.create_all()        
-        # Criar modelos padrão se não existirem
-        if not ModeloRecibo.query.first():
-            modelos_padrao = [
-                {
-                    'nome': 'Modelo Emitente',
-                    'conteudo': 'RECIBO Nº {numero_recibo}...'
-                },
-                {
-                    'nome': 'Modelo Destinatário',
-                    'conteudo': 'RECIBO Nº {numero_recibo}...'
-                },
-                {
-                    'nome': 'Modelo Personalizado',
-                    'conteudo': 'RECIBO Nº {numero_recibo}...'
-                }
-            ]
-            for modelo in modelos_padrao:
-                db.session.add(ModeloRecibo(**modelo))
-            db.session.commit()
-
-from flask import abort
-from docx import Document
-import io
-import json
 
 @app.route('/debug_recibo/<int:recibo_id>')
 def debug_recibo(recibo_id):
@@ -867,6 +1096,18 @@ def debug_modelos():
         'conteudo': m.conteudo
     } for m in modelos])
 
+@app.route('/debug_modelo/<int:modelo_id>')
+def debug_modelo(modelo_id):
+    modelo = ModeloRecibo.query.get(modelo_id)
+    if modelo:
+        return jsonify({
+            'id': modelo.id,
+            'nome': modelo.nome,
+            'logo_path': modelo.logo_path,
+            'header_text': modelo.header_text
+        })
+    return jsonify({'error': 'Modelo não encontrado'}), 404
+
 @app.route('/reset_database', methods=['POST'])
 def reset_database():
     try:
@@ -886,6 +1127,29 @@ def reset_database():
         return jsonify({'message': 'Database resetada com sucesso'})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+def init_db():    
+    with app.app_context():        # Criar tabelas se não existirem
+        db.create_all()        
+        # Criar modelos padrão se não existirem
+        if not ModeloRecibo.query.first():
+            modelos_padrao = [
+                {
+                    'nome': 'Modelo Emitente',
+                    'conteudo': 'RECIBO Nº {numero_recibo}...'
+                },
+                {
+                    'nome': 'Modelo Destinatário',
+                    'conteudo': 'RECIBO Nº {numero_recibo}...'
+                },
+                {
+                    'nome': 'Modelo Personalizado',
+                    'conteudo': 'RECIBO Nº {numero_recibo}...'
+                }
+            ]
+            for modelo in modelos_padrao:
+                db.session.add(ModeloRecibo(**modelo))
+            db.session.commit()
 
 if __name__ == '__main__':
     with app.app_context():
