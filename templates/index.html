@@ -297,9 +297,22 @@
                     <textarea class="form-control" id="modeloConteudo" rows="10"></textarea>
                 </div>
             </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                <button type="button" class="btn btn-primary" id="salvarModelo">Salvar Modelo</button>
+            <div class="modal-footer flex-column">
+                <div class="w-100 text-muted small mb-3 border-bottom pb-2">
+                    <p class="fw-bold mb-1">Variáveis disponíveis para uso no modelo:</p>
+                    <div class="d-flex flex-wrap gap-2">
+                        <code>{cliente_nome}</code> - Nome do cliente
+                        <code>{valor}</code> - Valor do recibo
+                        <code>{valor_extenso}</code> - Valor por extenso
+                        <code>{numero_recibo}</code> - Número do recibo
+                        <code>{data}</code> - Data atual
+                        <code>{documento_cliente}</code> - CPF/CNPJ do cliente
+                    </div>
+                </div>
+                <div class="w-100 d-flex justify-content-end">
+                    <button type="button" class="btn btn-secondary me-2" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-primary" id="salvarModelo">Salvar Modelo</button>
+                </div>
             </div>
         </div>
     </div>
