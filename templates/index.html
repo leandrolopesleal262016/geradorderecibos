@@ -279,6 +279,12 @@
                     <div class="mt-2">
                         <img id="logoPreview" src="" alt="Logo Preview" style="max-width: 200px; display: none;">
                     </div>
+                    <div class="form-check mt-2">
+                        <input class="form-check-input" type="checkbox" id="mostrarLogo" checked>
+                        <label class="form-check-label" for="mostrarLogo">
+                            Mostrar logo no recibo
+                        </label>
+                    </div>
                 </div>
                 
                 <!-- Header Text Section -->
@@ -434,19 +440,25 @@
                       $(this).addClass('selected');
                   });
 
-                  // Edição de modelo
-                  $('.editar-modelo').click(function(e) {
-                      e.stopPropagation();
-                      const modeloId = $(this).data('modelo');
-                      const modelo = modelos[modeloId];
-            
-                      $('#modeloNome').val(modelo.nome);
-                      $('#modeloConteudo').val(modelo.conteudo);
-                      $('#modeloEditModal').data('modelo-id', modeloId);
-            
-                      const modal = new bootstrap.Modal(document.getElementById('modeloEditModal'));
-                      modal.show();
-                  });
+                // Edição de modelo
+                    $('.editar-modelo').click(function(e) {
+                        e.stopPropagation();
+                        const modeloId = $(this).data('modelo');
+                        const modelo = modelos[modeloId];
+
+                        // Busca o valor salvo no localStorage ou usa true como padrão
+                        const savedValue = localStorage.getItem('mostrarLogo');
+                        $('#mostrarLogo').prop('checked', savedValue === null || savedValue !== 'false');
+                        
+                        $('#modeloNome').val(modelo.nome);
+                        $('#modeloConteudo').val(modelo.conteudo);
+                        $('#modeloHeader').val(modelo.header_text || '');
+                        $('#modeloEditModal').data('modelo-id', modeloId);
+
+                        const modal = new bootstrap.Modal(document.getElementById('modeloEditModal'));
+                        modal.show();
+                    });
+
                 
                 // Atualiza o código de upload da logo
                 $('#salvarModelo').click(function() {
@@ -599,14 +611,13 @@
                 console.log("Opções selecionadas:", todasOpcoes);
             });   
 
-            // Gerar recibos (modificado para armazenar o ID)
             $('#gerarRecibos').click(function() {
                 const modeloId = $('input[name="modeloRecibo"]:checked').val();
                 const empresasSelecionadas = $('#empresas').val() || [];
                 const pessoasSelecionadas = $('#pessoas').val() || [];
                 const todosSelecionados = [...empresasSelecionadas, ...pessoasSelecionadas];
                 const valor = $('#valor').val();
-                const data = $('#data').val();
+                const dataSelecionada = $('#data').val(); // Captura a data selecionada
 
                 if (todosSelecionados.length === 0) {
                     alert('Por favor, selecione pelo menos um cliente.');
@@ -617,7 +628,7 @@
                     alert('Por favor, insira um valor.');
                     return;
                 }
-               
+
                 fetch('/generate_receipts_bulk', {
                     method: 'POST',
                     headers: {
@@ -628,9 +639,11 @@
                         modeloConteudo: $('.modelo-recibo[data-modelo="' + modeloId + '"] .modelo-preview').text(),
                         clientes: todosSelecionados,
                         valor: valor,
-                        data: data
+                        data: data,
+                        mostrarLogo: localStorage.getItem('mostrarLogo') !== 'false' // Nova linha
                     })
                 })
+
                 .then(response => response.json())
                 .then(data => {
                     if (!data.preview || !Array.isArray(data.preview)) {
@@ -684,17 +697,13 @@
 
             // Salvar recibo editado (agora usa o data-recibo-id do card)
             $(document).on('click', '.salvar-recibo', function() {
-                console.log("Iniciando salvamento do recibo");
                 const card = $(this).closest('.card');
-                const reciboId = card.data('recibo-id'); // Obtém o ID do atributo data
+                const reciboId = card.data('recibo-id');
                 const conteudoAtualizado = [];
 
                 card.find('.linha-recibo').each(function() {
                     conteudoAtualizado.push($(this).text().trim());
                 });
-
-                console.log("Conteúdo atualizado capturado:", conteudoAtualizado);
-                console.log("Recibo ID:", reciboId); // Verifica se o ID está correto
 
                 fetch('/atualizar_recibo', {
                     method: 'POST',
@@ -703,7 +712,8 @@
                     },
                     body: JSON.stringify({
                         recibo_id: reciboId,
-                        conteudo: conteudoAtualizado
+                        conteudo: conteudoAtualizado,
+                        data: $('#data').val() // Envia a data atual do formulário
                     })
                 })
                 .then(response => response.json())
@@ -739,26 +749,42 @@
                 card.find('.editar-recibo').show();
             });
 
-            // Download dos recibos
             $('#downloadRecibos').click(function(e) {
-                e.preventDefault();
-                fetch('/download_recibos')
-                    .then(response => response.blob())
-                    .then(blob => {
-                        const url = window.URL.createObjectURL(blob);
-                        const a = document.createElement('a');
-                        a.href = url;
-                        a.download = 'recibos.zip';
-                        document.body.appendChild(a);
-                        a.click();
-                        window.URL.revokeObjectURL(url);
-                        a.remove();
-                    })
-                    .catch(error => {
-                        console.error('Erro no download:', error);
-                        alert('Erro ao baixar os recibos');
-                    });
+            e.preventDefault();
+            
+            // Coleta os IDs dos recibos na prévia
+            const recibosIds = [];
+            $('.card[data-recibo-id]').each(function() {
+                recibosIds.push($(this).data('recibo-id'));
             });
+            
+            fetch('/download_recibos', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    recibos: recibosIds
+                })
+            })
+            .then(response => response.blob())
+            .then(blob => {
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'recibos.zip';
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                a.remove();
+            })
+            .catch(error => {
+                console.error('Erro no download:', error);
+                alert('Erro ao baixar os recibos');
+            });
+        });
+
+
       $(document).ready(function() {
           function formatarValor(valor) {
               valor = valor.replace(/\D/g, '');
@@ -861,9 +887,44 @@
             console.error('Erro:', error);
         });
     });
+
+        
+        $('#salvarCliente').click(function() {
+        
+    });
+
+    
+    $(document).ready(function() {
+        // Define a data atual como valor padrão
+        const hoje = new Date().toISOString().split('T')[0];
+        $('#data').val(hoje);
+    });
+
+    // Carregar modelos ao iniciar
+    $(document).ready(function() {
+        carregarModelos();
+    });
+
+    // Gerenciar preferência de exibição de logo
+    // Gerenciar preferência de exibição de logo
+    $(document).ready(function() {
+        // Verificamos se existe um valor no localStorage
+        const savedValue = localStorage.getItem('mostrarLogo');
+        
+        // Se não existir valor OU o valor for diferente de 'false', marcamos o checkbox
+        $('#mostrarLogo').prop('checked', savedValue === null || savedValue !== 'false');
+        
+        // Salva a preferência quando o checkbox é alterado
+        $('#mostrarLogo').change(function() {
+            localStorage.setItem('mostrarLogo', $(this).prop('checked'));
+        });
+        
+        console.log('Estado inicial do checkbox mostrarLogo:', $('#mostrarLogo').prop('checked'));
+    });
+
+
+
 </script>
-
-
    
 <footer class="bg-light py-3 text-center mt-5">
     <p class="mb-0">Desenvolvido por Leandro Leal - 2025</p>
@@ -871,8 +932,4 @@
 
 </body>
 </html>
-
-
-
-
-
+    

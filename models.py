@@ -14,10 +14,11 @@ class ReciboGerado(db.Model):
     numero_recibo = db.Column(db.String(10), unique=True, nullable=False)
     modelo_id = db.Column(db.Integer, nullable=False)
     cliente_nome = db.Column(db.String(200), nullable=False)
-    valor = db.Column(db.Float, nullable=False)  # Mudando para Float
-    data_geracao = db.Column(db.DateTime, default=datetime.utcnow)
-    documento_blob = db.Column(db.LargeBinary)    
+    valor = db.Column(db.Float, nullable=False)
+    data_geracao = db.Column(db.DateTime, nullable=False)  # Remover default
     documento_blob = db.Column(db.LargeBinary)
+
+
 
 class ModeloRecibo(db.Model):
     __tablename__ = 'modelos_recibo'
@@ -25,10 +26,9 @@ class ModeloRecibo(db.Model):
     nome = db.Column(db.String(100), nullable=False)
     conteudo = db.Column(db.Text, nullable=False)
     header_text = db.Column(db.Text)
-    logo_path = db.Column(db.String(200))
+    logo_path = db.Column(db.String(200))    
     data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
     data_atualizacao = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-
 class Cliente(db.Model):
     __tablename__ = 'clientes'
     id = db.Column(db.Integer, primary_key=True)

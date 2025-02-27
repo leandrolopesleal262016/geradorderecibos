@@ -339,173 +339,6 @@ def get_clientes():
         return jsonify({'error': str(e)}), 500
 
 
-    
-# @app.route('/generate_receipts_bulk', methods=['POST'])
-# def generate_receipts_bulk():
-#     global documentos_gerados
-#     try:
-#         dados = request.json
-#         modelo_id = dados.get('modelo')
-#         clientes_selecionados = dados.get('clientes', [])
-
-#         # Busca modelo no banco
-#         modelo = ModeloRecibo.query.get(modelo_id)
-#         if not modelo:
-#             return jsonify({'erro': 'Modelo não encontrado'}), 404
-
-            
-#         print(f"Usando modelo {modelo_id}: {modelo.nome}")
-#         modelo_texto = modelo.conteudo
-
-#         data_atual = datetime.now()
-#         data_formatada = data_atual.strftime('%d/%m/%Y')
-
-#         valor_str = dados.get('valor', '0,00')
-#         valor_limpo = valor_str.replace('.', '').replace(',', '.')
-#         valor_float = float(valor_limpo)
-#         valor_formatado = f"{valor_float:,.2f}".replace(',', '_').replace('.', ',').replace('_', '.')
-
-#         documentos_gerados = []
-#         preview_content = []
-
-#         for cliente_nome in clientes_selecionados:
-#             numero_recibo = get_next_receipt_number()
-
-#             # Busca cliente no banco de dados
-#             cliente = Cliente.query.filter_by(razao_social=cliente_nome).first()
-#             if not cliente:
-#                 continue
-
-#             texto_formatado = modelo_texto.format(
-#                 cliente_nome=cliente.razao_social,
-#                 valor=valor_formatado,
-#                 valor_extenso=valor_por_extenso(valor_float),
-#                 numero_recibo=numero_recibo,
-#                 data=data_formatada,
-#                 documento_cliente=cliente.cpf_cnpj
-#             )
-
-#             # Busca modelo no banco
-#             modelo = ModeloRecibo.query.get(modelo_id)
-#             if not modelo:
-#                 return jsonify({'erro': 'Modelo não encontrado'}), 404
-
-#             # Criação do documento Word
-#             doc = Document()
-#             sections = doc.sections
-#             for section in sections:
-#                 section.left_margin = Inches(1)
-#                 section.right_margin = Inches(1)
-
-#             # Adiciona logo personalizada se existir
-#             if modelo.logo_path and os.path.exists(modelo.logo_path):
-#                 header_table = doc.add_table(rows=1, cols=2)
-#                 header_table.autofit = False
-#                 header_table.columns[0].width = Inches(1.2)
-#                 header_table.columns[1].width = Inches(5.8)
-                
-#                 logo_cell = header_table.cell(0, 0)
-#                 logo_paragraph = logo_cell.paragraphs[0]
-#                 logo_run = logo_paragraph.add_run()
-#                 logo_run.add_picture(modelo.logo_path, width=Inches(1.2))
-                
-#                 # Adiciona texto do cabeçalho personalizado
-#                 info_cell = header_table.cell(0, 1)
-#                 info_paragraph = info_cell.paragraphs[0]
-#                 info_run = info_paragraph.add_run(modelo.header_text or "")
-#                 info_run.font.color.rgb = RGBColor(128, 128, 128)
-#                 info_run.font.size = Pt(11)
-
-#             doc.add_paragraph()
-
-#             # Divide o texto em linhas e adiciona ao documento
-#             linhas_recibo = texto_formatado.split('\n')
-#             for linha in linhas_recibo:
-#                 if linha.strip():
-#                     p = doc.add_paragraph()
-#                     # Verifica se a linha contém "RECIBO Nº" e "VALOR"
-#                     if "RECIBO Nº" in linha and "VALOR" in linha:
-#                         p.alignment = WD_ALIGN_PARAGRAPH.LEFT  # Alinha o parágrafo à esquerda
-                        
-#                         # Divide a linha em duas partes: número do recibo e valor
-#                         partes = linha.split("VALOR:")
-                        
-#                         # Adiciona a primeira parte (RECIBO Nº) em negrito
-#                         run = p.add_run(partes[0].strip())
-#                         run.bold = True
-                        
-#                         # Adiciona tabulação para alinhar à direita
-#                         p.add_run('\t')  # Adiciona uma tabulação
-                        
-#                         # Configura a tabulação para alinhar à direita
-#                         tab_stop = p.paragraph_format.tab_stops.add_tab_stop(
-#                             Inches(6),  # Posição da tabulação (ajuste conforme necessário)
-#                             WD_ALIGN_PARAGRAPH.RIGHT
-#                         )
-                        
-#                         # Adiciona "VALOR:" e o valor alinhado à direita
-#                         valor_texto = f"VALOR:{partes[1].strip()}"
-#                         run = p.add_run(valor_texto)
-#                         run.bold = True
-#                     else:
-#                         p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-#                         p.add_run(linha.strip())
-
-#             doc.add_paragraph()
-
-#             # Data em português
-#             mes_pt = traduzir_mes(data_atual.strftime('%B'))
-#             data_formatada_completa = f"Bauru, {data_atual.day} de {mes_pt} de {data_atual.year}"
-            
-#             data_paragraph = doc.add_paragraph()
-#             data_paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-#             data_paragraph.add_run(data_formatada_completa)
-
-#             doc.add_paragraph()
-            
-#             # Assinatura
-#             assinatura_paragraph = doc.add_paragraph()
-#             assinatura_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-#             assinatura_paragraph.add_run("_" * 50 + "\n")
-#             assinatura_paragraph.add_run(cliente.razao_social.upper() + "\n")
-#             assinatura_paragraph.add_run(cliente.cpf_cnpj)
-
-#             # Salvar documento
-#             doc_buffer = io.BytesIO()
-#             doc.save(doc_buffer)
-#             doc_buffer.seek(0)
-
-#             # Salvar no banco
-#             recibo = ReciboGerado(
-#                 numero_recibo=numero_recibo,
-#                 modelo_id=int(modelo_id),
-#                 cliente_nome=cliente_nome,
-#                 valor=valor_float,
-#                 documento_blob=doc_buffer.getvalue()
-#             )
-#             db.session.add(recibo)
-#             db.session.commit()
-
-#             documentos_gerados.append((cliente_nome, doc_buffer.getvalue()))
-#             preview_content.append({
-#                 'id': recibo.id,
-#                 'nome': cliente_nome,
-#                 'conteudo': linhas_recibo
-#             })
-
-#         return jsonify({
-#             'preview': preview_content,
-#             'status': 'success'
-#         })
-
-#     except Exception as e:
-#         print(f"Erro detalhado: {str(e)}")
-#         import traceback
-#         print(f"Traceback: {traceback.format_exc()}")
-#         return jsonify({'error': str(e)}), 500
-
-# Em app.py, modifique a função generate_receipts_bulk:
-
 @app.route('/generate_receipts_bulk', methods=['POST'])
 def generate_receipts_bulk():
     global documentos_gerados
@@ -513,6 +346,21 @@ def generate_receipts_bulk():
         dados = request.json
         modelo_id = dados.get('modelo')
         clientes_selecionados = dados.get('clientes', [])
+        
+        # Recebe a data do frontend e converte para objeto datetime
+        data_enviada = dados.get('data')
+        print(f"Data recebida do frontend: {data_enviada}")
+        
+        if data_enviada:
+            data_selecionada = datetime.strptime(data_enviada, '%Y-%m-%d')
+            print(f"Data convertida: {data_selecionada}")
+        else:
+            data_selecionada = datetime.now()
+            print("Nenhuma data recebida, usando data atual.")
+
+        # Formata a data para exibição no recibo (dia/mês/ano)
+        data_formatada = data_selecionada.strftime('%d/%m/%Y')
+        print(f"Data formatada para o texto: {data_formatada}")
 
         # Busca modelo no banco
         modelo = ModeloRecibo.query.get(modelo_id)
@@ -521,9 +369,6 @@ def generate_receipts_bulk():
             
         print(f"Usando modelo {modelo_id}: {modelo.nome}")
         modelo_texto = modelo.conteudo
-
-        data_atual = datetime.now()
-        data_formatada = data_atual.strftime('%d/%m/%Y')
 
         valor_str = dados.get('valor', '0,00')
         valor_limpo = valor_str.replace('.', '').replace(',', '.')
@@ -556,51 +401,51 @@ def generate_receipts_bulk():
             for section in sections:
                 section.left_margin = Inches(1)
                 section.right_margin = Inches(1)
+            
+            # Recebe a preferência do frontend
+            mostrar_logo = dados.get('mostrarLogo', True)
 
-            # Cabeçalho com logo e informações
-            header_table = doc.add_table(rows=1, cols=2)
-            header_table.autofit = False
-            header_table.columns[0].width = Inches(1.2)
-            header_table.columns[1].width = Inches(5.8)
-
-            # Adicione este trecho de código na função generate_receipts_bulk em app.py
-
-            # Na função generate_receipts_bulk, modifique a parte do logo assim:
-            # Logo
-            logo_cell = header_table.cell(0, 0)
-            logo_paragraph = logo_cell.paragraphs[0]
-            logo_run = logo_paragraph.add_run()
-
-            print("\n=== DEBUG GERAÇÃO DE RECIBO ===")
-            print(f"Modelo ID: {modelo_id}")
-            print(f"Logo path no modelo: {modelo.logo_path}")
-
-            # Verifica e utiliza o caminho correto da logo
-            if modelo.logo_path:
-                logo_path = modelo.logo_path.lstrip('/')  # Remove a barra inicial se existir
-                if os.path.exists(logo_path):
-                    print(f"Usando logo personalizada: {logo_path}")
-                    try:
-                        logo_run.add_picture(logo_path, width=Inches(1.2))
-                        print("Logo personalizada adicionada com sucesso")
-                    except Exception as e:
-                        print(f"Erro ao adicionar logo personalizada: {str(e)}")
+            # Verifica se deve mostrar o logo usando o valor recebido do frontend
+            if mostrar_logo:
+                # Cabeçalho com logo e informações
+                header_table = doc.add_table(rows=1, cols=2)
+                header_table.autofit = False
+                header_table.columns[0].width = Inches(1.2)
+                header_table.columns[1].width = Inches(5.8)
+                
+                # Logo
+                logo_cell = header_table.cell(0, 0)
+                logo_paragraph = logo_cell.paragraphs[0]
+                logo_run = logo_paragraph.add_run()
+                
+                # Adicionar logo
+                if modelo.logo_path:
+                    logo_path = modelo.logo_path.lstrip('/')  # Remove a barra inicial se existir
+                    if os.path.exists(logo_path):
+                        try:
+                            logo_run.add_picture(logo_path, width=Inches(1.2))
+                        except Exception as e:
+                            print(f"Erro ao adicionar logo personalizada: {str(e)}")
+                            logo_run.add_picture('static/images/logo.png', width=Inches(1.2))
+                    else:
                         logo_run.add_picture('static/images/logo.png', width=Inches(1.2))
                 else:
-                    print(f"Arquivo de logo não encontrado em: {logo_path}")
                     logo_run.add_picture('static/images/logo.png', width=Inches(1.2))
+                
+                # Texto do cabeçalho na coluna 2
+                info_cell = header_table.cell(0, 1)
+                info_paragraph = info_cell.paragraphs[0]
+                header_text = modelo.header_text if modelo.header_text else "BEIJO E MATOS CONSTRUÇÕES E ENGENHARIA LTDA\nJoaquim da Silva Martha, 12-53 - Sala 3 - Altos da Cidade - Bauru/SP\nguilhermebeijo@bencato.com.br - CNPJ: 26.149.105/0001-09 - www.bencato.com.br"
+                info_run = info_paragraph.add_run(header_text)
+                info_run.font.color.rgb = RGBColor(128, 128, 128)
+                info_run.font.size = Pt(11)
             else:
-                print("Nenhum logo_path definido, usando logo padrão")
-                logo_run.add_picture('static/images/logo.png', width=Inches(1.2))
-                               
-
-            # Texto do cabeçalho
-            info_cell = header_table.cell(0, 1)
-            info_paragraph = info_cell.paragraphs[0]
-            header_text = modelo.header_text if modelo.header_text else "BEIJO E MATOS CONSTRUÇÕES E ENGENHARIA LTDA\nJoaquim da Silva Martha, 12-53 - Sala 3 - Altos da Cidade - Bauru/SP\nguilhermebeijo@bencato.com.br - CNPJ: 26.149.105/0001-09 - www.bencato.com.br"
-            info_run = info_paragraph.add_run(header_text)
-            info_run.font.color.rgb = RGBColor(128, 128, 128)
-            info_run.font.size = Pt(11)            
+                # Se não mostrar logo, adicione apenas o texto do cabeçalho em um parágrafo
+                header_paragraph = doc.add_paragraph()
+                header_text = modelo.header_text if modelo.header_text else "BEIJO E MATOS CONSTRUÇÕES E ENGENHARIA LTDA\nJoaquim da Silva Martha, 12-53 - Sala 3 - Altos da Cidade - Bauru/SP\nguilhermebeijo@bencato.com.br - CNPJ: 26.149.105/0001-09 - www.bencato.com.br"
+                header_run = header_paragraph.add_run(header_text)
+                header_run.font.color.rgb = RGBColor(128, 128, 128)
+                header_run.font.size = Pt(11)
 
             doc.add_paragraph()
 
@@ -628,9 +473,9 @@ def generate_receipts_bulk():
 
             doc.add_paragraph()
 
-            # Data em português
-            mes_pt = traduzir_mes(data_atual.strftime('%B'))
-            data_formatada_completa = f"Bauru, {data_atual.day} de {mes_pt} de {data_atual.year}"
+            # Data em português usando a data selecionada
+            mes_pt = traduzir_mes(data_selecionada.strftime('%B'))
+            data_formatada_completa = f"Bauru, {data_selecionada.day} de {mes_pt} de {data_selecionada.year}"
             
             data_paragraph = doc.add_paragraph()
             data_paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
@@ -650,12 +495,13 @@ def generate_receipts_bulk():
             doc.save(doc_buffer)
             doc_buffer.seek(0)
 
-            # Salvar no banco
+            # Salvar no banco com a data selecionada
             recibo = ReciboGerado(
                 numero_recibo=numero_recibo,
                 modelo_id=int(modelo_id),
                 cliente_nome=cliente_nome,
                 valor=valor_float,
+                data_geracao=data_selecionada,  # Salva a data selecionada
                 documento_blob=doc_buffer.getvalue()
             )
             db.session.add(recibo)
@@ -680,39 +526,53 @@ def generate_receipts_bulk():
         return jsonify({'error': str(e)}), 500
 
 
-@app.route('/download_recibos', methods=['GET'])
-def download_recibos():
-    global documentos_gerados
-    try:
-        if not documentos_gerados:
-            return jsonify({'error': 'Nenhum documento disponível para download'}), 404
 
+@app.route('/download_recibos', methods=['GET', 'POST'])
+def download_recibos():
+    try:
+        if request.method == 'POST':
+            # Se for POST, pega os IDs dos recibos enviados
+            dados = request.json
+            recibos_ids = dados.get('recibos', [])
+            recibos = ReciboGerado.query.filter(ReciboGerado.id.in_(recibos_ids)).all()
+        else:
+            # Se for GET, usa a variável global (compatibilidade com versão anterior)
+            global documentos_gerados
+            if not documentos_gerados:
+                return jsonify({'error': 'Nenhum documento disponível para download'}), 404
+            recibos = None
+        
         # Cria um buffer em memória para o ZIP
         zip_buffer = io.BytesIO()
         
         # Cria o arquivo ZIP com modo de escrita binária e compressão
         with zipfile.ZipFile(zip_buffer, 'w', compression=zipfile.ZIP_DEFLATED) as zip_file:
-            for nome, doc_content in documentos_gerados:
-                # Cria um buffer temporário para cada documento
-                doc_buffer = io.BytesIO(doc_content)
-                doc_buffer.seek(0)
-                
-                # Nome do arquivo limpo (remove caracteres especiais)
-                nome_arquivo = "".join(c for c in nome if c.isalnum() or c in (' ', '-', '_'))
-                
-                # Adiciona o documento ao ZIP usando o buffer do documento
-                zip_file.writestr(f"recibo_{nome_arquivo}.docx", doc_buffer.getvalue())
-                
-                # Fecha o buffer temporário
-                doc_buffer.close()
-
+            if recibos:
+                # Caso esteja usando recibos do banco de dados (POST)
+                for recibo in recibos:
+                    doc_buffer = io.BytesIO(recibo.documento_blob)
+                    doc_buffer.seek(0)
+                    
+                    nome_arquivo = "".join(c for c in recibo.cliente_nome if c.isalnum() or c in (' ', '-', '_'))
+                    zip_file.writestr(f"recibo_{recibo.numero_recibo}_{nome_arquivo}.docx", doc_buffer.getvalue())
+                    doc_buffer.close()
+            else:
+                # Caso esteja usando a variável global (GET)
+                for nome, doc_content in documentos_gerados:
+                    doc_buffer = io.BytesIO(doc_content)
+                    doc_buffer.seek(0)
+                    
+                    nome_arquivo = "".join(c for c in nome if c.isalnum() or c in (' ', '-', '_'))
+                    zip_file.writestr(f"recibo_{nome_arquivo}.docx", doc_buffer.getvalue())
+                    doc_buffer.close()
+        
         # Prepara o buffer para leitura
         zip_buffer.seek(0)
-        
-        # Obtém o tamanho do buffer
         zip_size = zip_buffer.getbuffer().nbytes
-                
-        # Envia o arquivo com tamanho específico
+        
+        print(f"ZIP gerado com sucesso. Tamanho: {zip_size} bytes")
+        
+        # Envia o arquivo
         response = send_file(
             zip_buffer,
             mimetype='application/zip',
@@ -720,12 +580,10 @@ def download_recibos():
             download_name='recibos.zip'
         )
         
-        # Adiciona headers específicos para download
+        # Headers específicos
         response.headers["Content-Length"] = zip_size
         response.headers["Content-Type"] = "application/zip"
         response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-        response.headers["Pragma"] = "no-cache"
-        response.headers["Expires"] = "0"
         
         return response
 
@@ -734,7 +592,9 @@ def download_recibos():
         import traceback
         print(f"Traceback: {traceback.format_exc()}")
         return jsonify({'error': str(e)}), 500
-    
+
+
+
 @app.route('/historico_recibos')
 def historico_recibos():
     recibos = ReciboGerado.query.order_by(ReciboGerado.data_geracao.desc()).all()
@@ -759,7 +619,11 @@ def download_recibo(recibo_id):
 @app.route('/visualizar_recibo/<int:recibo_id>')
 def visualizar_recibo(recibo_id):
     recibo = ReciboGerado.query.get_or_404(recibo_id)
-    return render_template('visualizar_recibo.html', recibo=recibo)
+    data_formatada = recibo.data_geracao.strftime('%d/%m/%Y')
+    mes_pt = traduzir_mes(recibo.data_geracao.strftime('%B'))
+    data_completa = f"Bauru, {recibo.data_geracao.day} de {mes_pt} de {recibo.data_geracao.year}"
+    return render_template('visualizar_recibo.html', recibo=recibo, data_formatada=data_completa)
+
 
 
 @app.route('/modelos', methods=['GET'])
@@ -1008,14 +872,23 @@ def atualizar_recibo():
 
         doc.add_paragraph()  # Espaço antes da data
 
-        # Data em português
-        data_atual = datetime.now()
-        mes_pt = traduzir_mes(data_atual.strftime('%B'))
-        data_formatada = f"Bauru, {data_atual.day} de {mes_pt} de {data_atual.year}"
+        # Dentro da função atualizar_recibo
+        data_recebida = dados.get('data')
+        if data_recebida:
+            data_selecionada = datetime.strptime(data_recebida, '%Y-%m-%d')
+            mes_pt = traduzir_mes(data_selecionada.strftime('%B'))
+            data_formatada = f"Bauru, {data_selecionada.day} de {mes_pt} de {data_selecionada.year}"
+        else:
+            # Usa a data do recibo existente
+            data_selecionada = recibo.data_geracao
+            mes_pt = traduzir_mes(data_selecionada.strftime('%B'))
+            data_formatada = f"Bauru, {data_selecionada.day} de {mes_pt} de {data_selecionada.year}"
 
+        # Na parte de geração do documento
         data_paragraph = doc.add_paragraph()
         data_paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-        data_paragraph.add_run(data_formatada)
+        data_paragraph.add_run(data_formatada)  # Usar a data formatada que definimos
+
 
         doc.add_paragraph()  # Espaço antes da assinatura
 
