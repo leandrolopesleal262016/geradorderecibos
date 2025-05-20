@@ -1,0 +1,49 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environment
+venv/
+env/
+ENV/
+
+# Flask instance folder
+instance/
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Generated files
+recibos.zip
+static/images/logos/*
+!static/images/logos/.gitkeep
+
+# Environment variables
+.env
+.flaskenv
+
+# IDE specific files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS specific files
+.DS_Store
+Thumbs.db
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+
+# Logs
+logs/
+*.log
+
+# Temporary files
+tmp/
+temp/
